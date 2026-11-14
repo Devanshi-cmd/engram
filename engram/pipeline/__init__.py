@@ -33,7 +33,12 @@ def default_services(settings: Settings, transcriber: Transcriber | None = None)
         from engram.speech.scribe import ScribeTranscriber
 
         transcriber = ScribeTranscriber(settings.elevenlabs_api_key)
-    return Services(settings, transcriber, PaidCache(settings.data_dir / "cache"))
+    reader = None
+    if settings.anthropic_api_key:  # otherwise frames are read through Claude Code on the plan
+        from engram.llm.frames import HaikuFrameReader
+
+        reader = HaikuFrameReader(settings.anthropic_api_key)
+    return Services(settings, transcriber, PaidCache(settings.data_dir / "cache"), reader)
 
 
 def build_runner(services: Services, stages: list[Stage] | None = None) -> Runner:

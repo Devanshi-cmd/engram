@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from engram.config import Settings
+from engram.llm.frames import FakeFrameReader
 from engram.pipeline import Runner, Services, build_runner
 from engram.pipeline.runner import PaidCache
 from engram.speech.fake import FakeTranscriber
@@ -40,8 +41,25 @@ def transcriber() -> FakeTranscriber:
 
 
 @pytest.fixture
-def services(settings: Settings, transcriber: FakeTranscriber) -> Services:
-    return Services(settings, transcriber, PaidCache(settings.data_dir / "cache"))
+def frame_reader() -> FakeFrameReader:
+    return FakeFrameReader()
+
+
+@pytest.fixture
+def services(
+    settings: Settings, transcriber: FakeTranscriber, frame_reader: FakeFrameReader
+) -> Services:
+    return Services(settings, transcriber, PaidCache(settings.data_dir / "cache"), frame_reader)
+
+
+@pytest.fixture(autouse=True)
+def no_claude_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests never call the real Claude Code: it bills the plan and needs a login."""
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("a test tried to run the real `claude` CLI")
+
+    monkeypatch.setattr("engram.llm.claude_code.claude_binary", refuse)
 
 
 @pytest.fixture

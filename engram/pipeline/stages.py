@@ -5,13 +5,16 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 
-from engram.errors import MediaError
+from engram.errors import MediaError, ProviderError
+from engram.llm.frames import ClaudeCodeFrameReader, FrameContext, FrameReader, FrameReading, Read
 from engram.media import MediaInfo, extract_audio, probe
 from engram.pipeline.hashing import file_sha256, key_of
 from engram.pipeline.runner import Stage, StageContext
 from engram.speech import Transcript, to_segments
-from engram.timeline import align_words
+from engram.timeline import Span, align_words
+from engram.timeline.compact import build_flags, build_timeline, clock
 from engram.vision.keyframes import extract_frame, find_keyframes
+from engram.vision.similar import dhash, group_same
 
 
 def _probe(ctx: StageContext) -> str:
@@ -109,6 +112,94 @@ def _align(ctx: StageContext) -> str:
     return f"{len(spans)} spans · {silent} without speech"
 
 
+READ_WORKERS = 8
+SPEECH_CONTEXT_CHARS = 3000  # what the lecturer said while a frame was up, for the reader
+
+
+def _read_frames(ctx: StageContext) -> str:
+    frames = ctx.read_json("keyframes.json")["frames"]
+    spans = [Span.model_validate(s) for s in ctx.read_json("alignment.json")]
+    reader: FrameReader = ctx.services.frame_reader or ClaudeCodeFrameReader(ctx.job_dir)
+    by_frame: dict[str, list[Span]] = {}
+    for span in spans:
+        by_frame.setdefault(span.frame, []).append(span)
+
+    # The same slide shown twice is read once.
+    owner = group_same({f["id"]: dhash(ctx.path(f["file"])) for f in frames})
+    leaders = [f for f in frames if owner[f["id"]] == f["id"]]
+
+    def context(frame_id: str) -> FrameContext:
+        mine = [s for f, o in owner.items() if o == frame_id for s in by_frame.get(f, [])]
+        mine.sort(key=lambda s: s.start)
+        speech = " … ".join(s.text for s in mine if s.text)
+        if len(speech) > SPEECH_CONTEXT_CHARS:
+            speech = speech[:SPEECH_CONTEXT_CHARS].rsplit(" ", 1)[0] + " …"
+        on_screen = ", ".join(f"{clock(s.start)}–{clock(s.end)}" for s in mine) or "unknown"
+        return FrameContext(ctx.job.title, on_screen, speech)
+
+    def read_one(frame: dict[str, str]) -> tuple[str, Read, bool]:
+        image = ctx.path(frame["file"])
+        c = context(frame["id"])
+        key = key_of({"image": file_sha256(image), "by": reader.name, "context": c.render()})
+        saved = ctx.services.cache.get("frame-readings", key)
+        if saved is not None:
+            return frame["id"], Read(FrameReading.model_validate(saved)), True
+        result = reader.read(image, c)
+        if result.error is None:
+            ctx.services.cache.put("frame-readings", key, result.reading.model_dump())
+        return frame["id"], result, False
+
+    ctx.progress(f"Reading {len(leaders)} frames with {reader.name}")
+    readings: dict[str, FrameReading] = {}
+    errors: list[str] = []
+    cost = 0.0
+    reused = 0
+    with ThreadPoolExecutor(READ_WORKERS) as pool:
+        for done, (frame_id, result, cached) in enumerate(pool.map(read_one, leaders), 1):
+            readings[frame_id] = result.reading
+            cost += result.cost_usd
+            reused += cached
+            if result.error:
+                errors.append(f"{frame_id}: {result.error[:120]}")
+            if done % 10 == 0:
+                ctx.progress(f"Read {done} of {len(leaders)} frames")
+    if leaders and len(errors) > len(leaders) / 2:
+        raise ProviderError(f"Most frames couldn't be read. First error: {errors[0]}")
+    ctx.add_cost(cost)
+    out = {
+        f["id"]: {**readings[owner[f["id"]]].model_dump(), "same_as": None
+                  if owner[f["id"]] == f["id"] else owner[f["id"]]}
+        for f in frames
+    }  # fmt: skip
+    ctx.write_json("readings.json", {"reader": reader.name, "cost_usd": round(cost, 5),
+                                     "frames": out, "errors": errors})  # fmt: skip
+    low = sum(1 for r in readings.values() if r.confidence < 0.6)
+    same = len(frames) - len(leaders)
+    parts = [f"{len(leaders)} read", f"${cost:.3f}"]
+    if same:
+        parts.append(f"{same} repeats")
+    if reused:
+        parts.append(f"{reused} reused")
+    parts.append(f"{low} low-confidence")
+    if errors:
+        parts.append(f"{len(errors)} failed")
+    return " · ".join(parts)
+
+
+def _timeline(ctx: StageContext) -> str:
+    info = MediaInfo.model_validate(ctx.read_json("media.json"))
+    transcript = Transcript.model_validate(ctx.read_json("transcript.json"))
+    spans = [Span.model_validate(s) for s in ctx.read_json("alignment.json")]
+    raw = ctx.read_json("readings.json")["frames"]
+    readings = {k: FrameReading.model_validate(
+        {f: v for f, v in r.items() if f != "same_as"}) for k, r in raw.items()}  # fmt: skip
+    flags = build_flags(transcript, spans, readings)
+    ctx.write_json("flags.json", [f.model_dump() for f in flags])
+    text = build_timeline(ctx.job.title, info.duration, transcript, spans, readings, flags)
+    ctx.path("timeline.md").write_text(text)
+    return f"{len(text) / 1000:.0f} KB · {len(flags)} flags"
+
+
 def _clock(seconds: float) -> str:
     s = int(round(seconds))
     h, m, s = s // 3600, s % 3600 // 60, s % 60
@@ -148,5 +239,21 @@ STAGES: list[Stage] = [
         _align,
         deps=("probe", "transcribe", "keyframes"),
         outputs=("alignment.json",),
+    ),
+    Stage(
+        "read_frames",
+        "Reading the board and slides",
+        _read_frames,
+        deps=("keyframes", "align"),
+        outputs=("readings.json",),
+        params=lambda s: {"reader": s.frame_reader_name},
+    ),
+    Stage(
+        "timeline",
+        "Writing the timeline",
+        _timeline,
+        deps=("probe", "transcribe", "align", "read_frames"),
+        outputs=("timeline.md", "flags.json"),
+        version=2,  # v2: fuzzy repeat-line matching, fillers dropped, fragments not flagged
     ),
 ]

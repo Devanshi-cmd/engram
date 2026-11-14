@@ -22,7 +22,7 @@
 |---|---|---|
 | Reading frames | **Claude Haiku 5.5 through the Anthropic API** (structured output, low effort, 8 in parallel) | The split Recall proved works: about $0.10–0.15 per hour of video, around 1 minute for 150–240 frames. Opus reading every frame cost about 40× more (see §2.1). If no API key is set, the fallback is `claude -p --model haiku` on the plan. |
 | Reasoning | **Opus through headless Claude Code** (`claude -p --model opus --effort medium --json-schema`) | Billed to the Claude plan, not the API. It reads a compact text timeline and **opens only the frame images that a note, diagram or question relies on**, which checks exactly the frames that matter. `ANTHROPIC_API_KEY` is stripped from its environment so it never bills the API. |
-| OCR hint | Tesseract on every kept frame (CPU, one process per core) | Cheap text for frame consolidation and a hint for Haiku. It is never trusted on its own, and is useless on handwriting, where pixel hashes take over. |
+| OCR hint | ~~Tesseract~~ **dropped in M2/M3** | Consolidation compares ink after alignment instead of OCR words, and Haiku reads printed slides on its own. Tesseract can't read handwriting, which is the content that matters most. |
 | Speech-to-text | **ElevenLabs Scribe** | Word-level timestamps (needed for sync), speaker diarization, and long files. One vendor for speech and voice. |
 | Voice | **ElevenLabs TTS** with timestamps | Most natural voice. Character timings make captions frame-exact. |
 | Computer vision | OpenCV + NumPy (CPU) | Keyframe detection is deterministic signal processing. No model is needed, and it runs fast on this machine, which has no GPU. |

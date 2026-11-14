@@ -24,13 +24,16 @@ from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from engram.config import Settings
 from engram.errors import EngramError
 from engram.pipeline.hashing import key_of, outputs_digest
 from engram.pipeline.store import Job, Store
 from engram.speech.models import Transcriber
+
+if TYPE_CHECKING:
+    from engram.llm.frames import FrameReader
 
 EventSink = Callable[[str | None, str], None]
 
@@ -42,6 +45,14 @@ class Services:
     settings: Settings
     transcriber: Transcriber
     cache: PaidCache
+    # None means headless Claude Code on the plan (needs the job folder, so it's built per job).
+    frame_reader: FrameReader | None = None
+
+    @property
+    def frame_reader_name(self) -> str:
+        from engram.llm.frames import ClaudeCodeFrameReader
+
+        return self.frame_reader.name if self.frame_reader else ClaudeCodeFrameReader.name
 
 
 @dataclass(frozen=True)

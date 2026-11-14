@@ -107,3 +107,24 @@ Smaller lessons along the way:
 - **What:** engram.devanshitiwari.com points at this machine (165.99.53.30). nginx terminates TLS (Let's Encrypt via certbot) and proxies to `127.0.0.1:4810`. systemd runs the web app and the worker.
 - **Why:** The plan assumed a Cloudflare Tunnel, but this machine already has a public IP and serves DevSwarm exactly this way. Reusing a setup that already works means one less moving part. Uploads need `client_max_body_size` raised and generous proxy timeouts, which a tunnel would have limited anyway.
 - **Deployed early (after M2):** the site went live before the product was finished, so every milestone ships to the real URL and deployment problems surface early instead of on launch day. The upload form stays hidden until the worker exists.
+
+## M3: Haiku reads, Opus checks only what's flagged
+
+- **Measured on CS229:** Haiku read 118 frames in 58 s for $0.066. Given Andrew Ng's words, it read f0044 as *"Start with some θ (Say θ = 0⃗) / Keep changing θ to reduce J(θ) / θⱼ := θⱼ − α ∂/∂θⱼ J(θ)"*, including the "learning rate" arrow pointing at α, and flagged the cut-off writing at the bottom itself.
+- **Opus as the checker:** given Haiku's reading of the flagged frame f0046, Opus opened the image (16 s, 6.5k tokens) and found that a second equation line was a phantom: the same formula with the handwritten ∂ read as "2".
+- **That mistake became a prompt rule (v2):** "a curly ∂ often looks like a 2 or a 6, and θ like a 0; give one reading per line, never alternatives". Re-reading every frame cost $0.066 (cached readings made the prompt change the only thing that re-ran), and the phantom line is gone.
+
+## Trimming headless Claude Code from 43k to 1.8k tokens per call
+
+- **What:** `--system-prompt` replaces Claude Code's default prompt, with `--tools` limited to Read (or none), and no MCP servers, settings, skills or saved session.
+- **Why:** a bare `claude -p "Say hi"` used about 43,000 input tokens (21k of them cache writes): Claude Code's coding-agent prompt and tool definitions. Engram needs none of that. Recall measured the same (about 19k → about 740 tokens). `--bare` would trim it too, but it only authenticates with an API key, which would bill the API instead of the plan.
+
+## Tests must never call real Claude
+
+- **What:** an autouse fixture makes `claude_binary()` raise in every test. The test services use `FakeFrameReader`.
+- **Why:** after `read_frames` was added, the suite went from 9 s to 45 s. The pipeline tests had no frame reader, fell back to Claude Code, and were calling the real CLI on the plan. Now any test that tries fails loudly.
+
+## Dropped: Tesseract OCR
+
+- **What:** the plan had Tesseract as a hint for Haiku and for consolidation. It's not used.
+- **Why:** M2's consolidation compares *ink* after alignment, which works on handwriting where OCR words don't. Haiku reads printed slides on its own. One less system dependency.

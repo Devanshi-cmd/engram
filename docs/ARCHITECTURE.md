@@ -17,8 +17,14 @@ engram/
     fake.py         Scripted transcriber for tests
   vision/
     keyframes.py    Views, best frame per view, consolidation (see below)
+  llm/
+    claude_code.py  Headless `claude -p`: keys stripped, minimal session, read-only, schema-checked
+    frames.py       FrameReading schema + prompt; Haiku via the API, Claude Code fallback, fake
+    reasoner.py     Opus via Claude Code (reads the timeline, opens only the frames it needs)
   timeline/
     align.py        Words → the frame on screen when they were said
+    compact.py      Flags + the compact timeline.md Opus reads
+  vision/similar.py Perceptual hash: the same slide shown twice is read once
   pipeline/
     store.py        SQLite: jobs, stages, progress events
     runner.py       The DAG runner, stage context, paid-call cache
@@ -38,11 +44,15 @@ engram/
 | `transcribe` | `audio.mp3` | `transcript.json` | Scribe with word timestamps and speakers. The job title is sent as key terms |
 | `keyframes` | the video | `keyframes.json`, `frames/` | Runs alongside audio and transcription. Full-size JPEGs of the best frame per view |
 | `align` | transcript, keyframes | `alignment.json` | Spans: one frame, a time range, the words spoken over it |
+| `read_frames` | frames, alignment | `readings.json` | Haiku reads each frame with the words spoken while it was up. 8 in parallel, cached by image + context |
+| `timeline` | transcript, alignment, readings | `timeline.md`, `flags.json` | What Opus reads: frames and speech interleaved, repeats and fillers removed |
 
 ```mermaid
 flowchart LR
   P[probe] --> A[audio] --> T[transcribe] --> L[align]
   P --> K[keyframes] --> L
+  L --> R[read_frames] --> TL[timeline]
+  T --> TL
 ```
 
 ## Keyframes
@@ -101,3 +111,32 @@ SQLite in WAL mode at `.data/engram.sqlite3`. Every call opens a short-lived con
 ## Theme
 
 The look is DevSwarm's: Apple's palette (`#f5f5f7` page, `#1d1d1f` ink, `#0071e3` action), the system font stack, a frosted sticky header, 22px card radius, pill buttons, and a sun/moon switch for night mode. Light is the default. `theme.css` is never edited, so the two products stay identical. Anything new goes in `engram.css` and uses only `var(--…)` tokens.
+
+## Reading frames (Haiku)
+
+Each frame goes to Claude Haiku 5.5 with the image at full size and a short context: the lecture title, when the frame was on screen, and **what the lecturer said meanwhile** (up to 3,000 characters). Lecturers say what they write, so the speech settles ambiguous handwriting. The output is a `FrameReading`: kind, title, description, verbatim `key_text` (maths in LaTeX, `[?]` for anything unreadable), equations, a diagram description, confidence and a review reason.
+
+- **Cost:** on CS229 (78 min), 118 frames in 58 s for $0.066 (about 2,700 input tokens per frame).
+- **Repeats:** frames whose 256-bit difference hashes differ by 6 bits or less are read once, so a slide shown at 22:52 and again at 34:22 costs one call.
+- **Cache:** readings are stored by image bytes + reader + prompt version + context, across jobs. Changing the prompt version re-reads.
+- **Failures:** a frame that can't be read gets an empty, flagged reading, and the job goes on. If most frames fail, the stage fails with the first error. Running out of credits stops the job with a readable message.
+- **No API key?** `ClaudeCodeFrameReader` reads through `claude -p --model haiku` on the plan instead, opening the image with the Read tool.
+
+## Headless Claude Code
+
+`llm/claude_code.py` runs `claude -p` so that it costs little and can do little:
+
+| Flag | Why |
+|---|---|
+| keys removed from the environment | With `ANTHROPIC_API_KEY` set, Claude Code bills the API, not the plan |
+| `--system-prompt` (replaces the default) | Claude Code's own prompt is about 21,000 tokens of coding-agent instructions |
+| `--tools Read` (or none), `--strict-mcp-config`, `--setting-sources ""`, `--disable-slash-commands` | Only what the job needs. Lecture text can't reach a shell or the network |
+| `--no-session-persistence` | Nothing saved between calls |
+| `--json-schema` | Claude Code validates the answer; Engram parses `structured_output` into Pydantic |
+| `cwd` = the job folder | `Read` sees that lecture's frames and nothing else |
+
+A trivial call went from about 43,000 input tokens to 1,845. Opus checking one flagged frame takes about 16 s, 3 turns and 6,500 input tokens.
+
+## The timeline
+
+`timeline.md` is what Opus reads instead of 120 images. Frames and speech appear in time order. Writing shown before isn't repeated: lines are matched on letter trigrams, because Haiku transcribes the same writing slightly differently each time. Fillers ("um", "uh") are dropped, and students are marked `(student)`. Flags (`⚠`) cover doubtful speech, low-confidence frames with real writing on them, and moments where the lecturer says "as you can see" while the reading says little. On CS229 it's 97 KB, with 68 of 120 frames shown and 30 flags.
