@@ -225,3 +225,42 @@ Smaller lessons along the way:
 
 - **What:** an autouse fixture makes the pipeline tests render 320×180 and 180×226 at 10 fps. One test renders real-size frames and checks the layout (caption pill, rounded card corners, page colour around slides).
 - **Why:** every pipeline test now ends in a video. At full size that would add minutes to the suite; at thumbnail size it's the same code for 1% of the pixels.
+
+## M6: the web app
+
+- **What:** uploads with an access code, a queue run by `engram worker`, a live job page, the course page (player, transcript, chapters, notes, diagrams, flashcards, quiz, summary) and downloads (Markdown zip, Anki, print/PDF).
+- **Measured live:** a 4-minute MIT 18.06 clip uploaded through https://engram.devanshitiwari.com went from upload to finished course in about 4 minutes on the production worker (systemd, Opus through Claude Code on the plan): 2 chapters, 9 notes, 1 diagram, 6 cards, 2 questions, a 29 s summary.
+
+## A separate worker process
+
+- **What:** the web app only records an upload as a queued job. `engram worker` (its own systemd service) runs jobs one at a time.
+- **Why:** a lecture takes minutes. In the web process, every deploy would kill whatever was running, and one long job would compete with page requests. As a separate process, a restart of either side loses nothing: the worker requeues anything it left running, and the runner resumes from the last finished stage.
+- **One at a time:** the bottlenecks (the Claude plan's limits, ElevenLabs, CPU for video) are shared, so parallel jobs would only slow each other down. Inside a job, stages already run in parallel.
+- **Alternatives:** Celery or RQ (a broker to run and monitor for a queue that never holds more than a few jobs); the SQLite store already has the state, so polling it every 2 s is enough.
+
+## A web copy only when needed
+
+- **What:** a `playback` stage. An H.264/AAC MP4 upload is served as it is; anything else (AV1, HEVC, MKV, WebM) gets an H.264 copy at most 720p, CRF 23.
+- **Why:** CS229 came from YouTube as AV1, which older Safari can't play, and an iPhone upload would be HEVC, which most non-Apple browsers can't. The copy took 11.5 min for the 78-minute CS229 (502 MB) and runs alongside the other stages.
+
+## Maths found on the server, typeset in the browser
+
+- **What:** the server finds maths by Pandoc's rules and wraps it in `<span class="tex">`; the browser runs KaTeX on those spans only.
+- **Why:** the first version used KaTeX's auto-render, which pairs any two dollar signs. In CS229's notes, "price in $1000s): $2104 → 400$" became garbled maths. Pandoc's rules (an opening `$` must be followed by a non-space; a closing one must follow a non-space and not be followed by a digit) leave currency alone, and all 416 maths spans in CS229 now render with no errors. The Anki export uses the same rules.
+
+## Vendored KaTeX and Mermaid, no CDN
+
+- **What:** KaTeX 0.16.11 (woff2 fonts only) and Mermaid 11.4.1 are served from `static/vendor/`.
+- **Why:** the Content-Security-Policy allows scripts only from the site itself, so text on a slide can never become code. A CDN would have to be allowed too. Mermaid is the same version as the server-side checker, so a diagram that parsed in M4 renders here. Mermaid needs no `eval`, so `script-src 'self'` holds; styles must allow `'unsafe-inline'` because both libraries position output with style attributes.
+
+## Small things found by looking at the page
+
+- **The same board twice:** Opus can pick the same frame for two sections of a chapter. The page shows it once.
+- **The voice ID on a public page:** the job page's activity log showed the narrator's name, which included the ElevenLabs voice ID. The message now says "narration".
+- **A short lecture got a long summary:** the 4-minute clip got an 81 s summary. The script's length now scales with the lecture: about 12 words per lecture minute, between 60 and 190 words (25 to 80 s). The clip's summary is now 29 s; CS229's is unchanged.
+- **Re-uploading an old video:** a job finished before the course stages existed would have been reused as "done" with no course. It's now queued again to catch up.
+
+## Courses unlisted by default
+
+- **What:** a course page is reachable by its link (a random 12-character id). Only courses marked with `engram list` appear on the home page.
+- **Why:** an uploader's lecture isn't the operator's to publish, and lectures like CS229 aren't openly licensed. The sample gallery (M8) will list only lectures with a licence that allows it.

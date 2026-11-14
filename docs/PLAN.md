@@ -154,7 +154,7 @@ Each milestone ends with: tests green, a demo, docs updated, a commit, and a che
 | **M5** | Summary video: script → TTS → ffmpeg composition, landscape and portrait | A playable `summary.mp4` |
 | **M6** | Web app: upload, live job page, course page with synced player/transcript, flashcards, quiz, exports | The full flow in the browser |
 | **M7** | Evals: keyframe recall, handwriting CER, quiz grounding rate. Hardening: limits, errors, empty states, mobile | `engram eval` report. The numbers go in the README |
-| **M8** | Launch: access codes + queue + daily limits, nginx + certbot + systemd (`engram-web`, `engram-worker`) for engram.devanshitiwari.com, sample gallery, How-it-works page, README with GIFs, LinkedIn assets | https://engram.devanshitiwari.com |
+| **M8** | Launch: daily limits per access code, HSTS, sample gallery of openly licensed lectures, How-it-works page, README with GIFs, LinkedIn assets (access codes, the queue, nginx, certbot and both systemd services already shipped in M2 and M6) | https://engram.devanshitiwari.com |
 
 ## 7. Risks
 

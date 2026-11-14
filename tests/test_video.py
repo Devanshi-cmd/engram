@@ -260,8 +260,17 @@ def test_a_long_script_gets_one_shortening_pass() -> None:
             self.labels.append(label)
             return schema.model_validate(script(250 if len(self.labels) == 1 else 180))
 
-    course = {"title": "T", "overview": "o", "chapters": [], "frames": {"f0001": {"t": 1.0}}}
+    course = {"title": "T", "overview": "o", "chapters": [], "frames": {"f0001": {"t": 1.0}},
+              "duration": 3600.0}  # fmt: skip
     asker = Asker()
     out = write_script(asker, course, {})
     assert asker.labels == ["summary script", "summary script, shorter"]
     assert len(out.scenes[0].narration.split()) == 180
+
+
+def test_the_summary_is_shorter_for_a_short_lecture() -> None:
+    from engram.course.script import word_range
+
+    assert word_range(4 * 60) == (40, 60)
+    assert word_range(10 * 60) == (80, 120)
+    assert word_range(78 * 60) == (150, 190)

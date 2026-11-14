@@ -24,7 +24,16 @@ SPOKEN = {
     "≤": " at most ", "≥": " at least ", "→": " to ", "×": " times ", "²": " squared ",
     "=": " equals ", "+": " plus ", "%": " percent", "&": " and ",
 }  # fmt: skip
-MIN_WORDS, MAX_WORDS = 150, 200  # about 60-85 seconds at the narrator's 2.4 words a second
+WORDS_PER_SECOND = 2.4  # the narrator's pace
+
+
+def word_range(duration: float) -> tuple[int, int]:
+    """How long the summary should be: about 12 words per lecture minute, between 60 words
+    (25 s, for a short clip) and 190 (80 s, for an hour or more)."""
+    high = max(60, min(190, round(duration / 60 * 12)))
+    return max(40, high - 40), high
+
+
 UNSPEAKABLE = re.compile(r"[$\\^_{}|<>`*#~]")
 
 
@@ -55,12 +64,16 @@ def frame_list(course: dict[str, Any], readings: dict[str, dict[str, Any]]) -> s
 def write_script(
     asker: Asker, course: dict[str, Any], readings: dict[str, dict[str, Any]]
 ) -> SummaryScript:
-    prompt = SCRIPT_PROMPT.format(course=outline(course), frames=frame_list(course, readings))
+    low, high = word_range(course["duration"])
+    prompt = SCRIPT_PROMPT.format(
+        low=low, high=high, seconds=round(high / WORDS_PER_SECOND),
+        course=outline(course), frames=frame_list(course, readings),
+    )  # fmt: skip
     script = asker.ask("summary script", prompt, system=SCRIPT_SYSTEM, schema=SummaryScript)
     script = checked(script, set(course["frames"]))
-    if words(script) > MAX_WORDS:  # one revision; Opus overshot 210 words with 246
+    if words(script) > high + 10:  # one revision; Opus overshot 210 words with 246
         shorten = SHORTEN_PROMPT.format(
-            words=words(script), low=MIN_WORDS, high=MAX_WORDS - 10,
+            words=words(script), low=low, high=high,
             script=script.model_dump_json(indent=1),
         )  # fmt: skip
         script = asker.ask("summary script, shorter", shorten, system=SCRIPT_SYSTEM,

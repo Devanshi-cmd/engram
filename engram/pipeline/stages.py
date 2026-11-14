@@ -596,7 +596,7 @@ STAGES: list[Stage] = [
         _script,
         deps=("read_frames", "course"),
         outputs=("script.json",),
-        version=2,  # v2: 150-190 words, one shortening pass past 200
+        version=3,  # v3: length scales with the lecture (60-190 words)
         params=lambda s: {"by": s.get_reasoner().name, "prompts": PROMPT_VERSION},
     ),
     Stage(

@@ -6,7 +6,7 @@
 
 Engram listens to the talk, reads the slides and the whiteboard from the video frames (handwriting included), and lines the two up in time. The words spoken while a frame was on screen help it read that frame, and every note can cite exactly where it came from.
 
-> Status: in development. The build plan is in [docs/PLAN.md](docs/PLAN.md).
+> Status: working end to end at https://engram.devanshitiwari.com (uploads need an access code). Evals and launch polish are next; the plan is in [docs/PLAN.md](docs/PLAN.md).
 
 ## How it works
 

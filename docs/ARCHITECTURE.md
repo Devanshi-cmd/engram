@@ -51,7 +51,13 @@ engram/
     stages.py       The stages themselves
     thinking.py     Opus calls, cached in the paid cache and recorded (time, tokens, files opened)
     hashing.py      File and data hashes that decide what's stale
-  web/              FastAPI app, templates, DevSwarm theme (see below)
+  worker.py         The queue: runs queued jobs one at a time, requeues interrupted ones
+  web/
+    app.py          Routes: upload, job page, course page, media, transcript, downloads
+    course.py       The course page's data: Markdown + maths, shuffled quiz, transcript
+    exports.py      Markdown zip and Anki file
+    templates/      Jinja: home, job (live), course, print
+    static/         theme.css (DevSwarm, unchanged), engram.css, course.js, vendor/
 ```
 
 ## A job
@@ -63,6 +69,7 @@ engram/
 | `probe` | the video | `media.json` | Rejects files with no video or no audio stream, or longer than `ENGRAM_MAX_MINUTES` (120) |
 | `audio` | the video | `audio.mp3` | Mono 16 kHz, 64 kbps, no tags, bit-exact. The same speech always gives the same bytes |
 | `transcribe` | `audio.mp3` | `transcript.json` | Scribe with word timestamps and speakers. The job title is sent as key terms |
+| `playback` | the video | `playback.json` (+ `playback.mp4`) | The upload as it is if it's H.264/AAC MP4, else an H.264 copy at most 720p for browsers. CS229 (AV1): 11.5 min, 502 MB |
 | `keyframes` | the video | `keyframes.json`, `frames/` | Runs alongside audio and transcription. Full-size JPEGs of the best frame per view |
 | `align` | transcript, keyframes | `alignment.json` | Spans: one frame, a time range, the words spoken over it |
 | `read_frames` | frames, alignment | `readings.json` | Haiku reads each frame with the words spoken while it was up. 8 in parallel, cached by image + context |
@@ -133,10 +140,28 @@ SQLite in WAL mode at `.data/engram.sqlite3`. Every call opens a short-lived con
 
 ## Web app
 
-- **Server-rendered.** FastAPI renders Jinja templates. Live parts (job progress) will refresh with HTMX, so there's no frontend build step.
-- **Security headers on every response**, including static files and errors. A strict Content-Security-Policy (`script-src 'self'`, no inline script or style) means text read off a slide can never run as code, even if escaping were missed somewhere.
-- **Host header allowlist** (`TrustedHostMiddleware`) blocks DNS-rebinding attacks on the local server.
-- **Uploads are off until the pipeline is wired into the web app (M6).** `create_app(accept_uploads=...)` and at least one access code must both be set.
+- **Server-rendered.** FastAPI renders Jinja templates. The job page refreshes itself with HTMX every 2 s, and the course page has one plain script (`static/course.js`). No frontend build step.
+- **The web app never processes a lecture.** An upload is saved to `.data/uploads/`, checked with ffprobe (a video, within the length limit), and recorded as a queued job. `engram worker`, a separate process, runs queued jobs oldest first, one at a time. Restarting the site never interrupts a lecture, and a stopped worker's job is queued again on start-up and resumes from its last finished stage.
+- **Uploads need an access code** (`ENGRAM_ACCESS_CODES`, compared in constant time) and `engram serve --uploads`. Uploading the same bytes again reuses the existing job.
+- **Courses are unlisted by default.** A course page lives at `/courses/<job id>`. Only courses marked with `engram list <job>` appear on the home page.
+- **Files are served from an allowlist** (`frames/f0000.jpg`, `thumbs/…`, `summary*.mp4`, `summary.jpg`, `summary.vtt`), matched by a regular expression, never by joining paths. Transcripts, readings, logs and the database stay private. Video is served with HTTP range requests, so seeking works.
+- **Security headers on every response.** The Content-Security-Policy allows scripts only from the app itself (KaTeX and Mermaid are vendored in `static/vendor/`, no CDN), so text read off a slide can never run as code. Styles may be inline, because KaTeX and Mermaid position maths and diagrams with style attributes.
+- **Untrusted text, rendered safely.** Model output and board text go through markdown-it with raw HTML off, and Jinja autoescapes the rest. Maths is found on the server by Pandoc's rules and wrapped in `<span class="tex">`, and the browser typesets only those spans, so "price in $1000s" stays text.
+- **Host header allowlist** (`TrustedHostMiddleware`) blocks DNS-rebinding attacks.
+
+### The course page
+
+| Part | What it does |
+|---|---|
+| Player | The lecture (or its web copy). Every timestamp, chapter, board image and filmstrip frame seeks it, starting 2 s early for context |
+| Transcript | Loaded from `transcript.json` (paragraphs of `[start, end, word]`). The current word is highlighted and kept in view unless you've just scrolled; clicking a word seeks to it. Students are marked |
+| Chapters | Sidebar, following the playhead |
+| Notes | Per chapter: summary, sections with the clearest board image (once per chapter), points with timestamps, key terms, diagrams |
+| Diagrams | Mermaid, drawn when their tab is first shown (Mermaid can't measure hidden elements) |
+| Flashcards | One card at a time: Space turns it, 1 "again" (back of the queue), 2 "got it" (remembered in `localStorage`). Filter by chapter. Without JavaScript, a plain list |
+| Quiz | Options shuffled per question (seeded by its id, so the answer isn't always where Opus put it). Instant feedback, explanation, "rewatch" link, running score |
+| Summary | The landscape video with captions; downloads for both shapes |
+| Downloads | Notes as a Markdown zip with the board images; an Anki import file (tab-separated, `#deck`/`#html`/`#tags` header, maths as `\(…\)` for Anki's MathJax); a print page laid out for paper and PDF |
 
 ## Theme
 

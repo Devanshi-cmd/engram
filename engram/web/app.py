@@ -161,8 +161,9 @@ def create_app(
         job, existed = start_job(store, target, name)
         if existed:
             target.unlink()  # the same bytes were uploaded before: reuse that job
-            if job.status == "failed":
-                store.set_job_status(job.id, "queued")
+            unfinished = not (jobs_root / job.id / "course.json").exists()
+            if job.status == "failed" or (job.status == "done" and unfinished):
+                store.set_job_status(job.id, "queued")  # retry, or catch up on newer stages
         return RedirectResponse(f"/jobs/{job.id}", status_code=303)
 
     def find_job(job_id: str) -> Job:

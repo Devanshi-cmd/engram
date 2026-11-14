@@ -86,12 +86,14 @@ SCRIPT_SYSTEM = f"""You write the narration for a 60-90 second video that summar
 
 You get the course built from the lecture (title, overview, chapters, headings, key terms) and the lecture's frames you may show, with what each shows. Thumbnails are in the working directory as thumbs/<id>.jpg: open the ones you're considering with the Read tool, and pick frames that are sharp, readable and show the idea (a board full of the key equation beats the lecturer mid-sentence). {DATA_RULE}
 
-- 150-190 words in total (the voice reads about 2.4 words a second, so this is 60-80 seconds), 6-8 scenes. The first scene is a title card (frame ''), introducing what the lecture teaches. Then one scene per big idea, in the lecture's order, each on a frame that shows it. End with one sentence on what a student can now do.
+- As many words as the prompt says (the voice reads about 2.4 words a second), and 3-8 scenes: fewer for a short lecture. The first scene is a title card (frame ''), introducing what the lecture teaches. Then one scene per big idea, in the lecture's order, each on a frame that shows it. End with one sentence on what a student can now do.
 - Narration is spoken English for a text-to-speech voice: write maths as words ("theta j minus alpha times the partial derivative of J"), never symbols, LaTeX, Greek letters or abbreviations a voice would stumble on. Short sentences. Warm, clear and confident, like a good teaching assistant; no hype, no "in this video".
 - Say only what the lecture teaches.
 - Headings are short labels for the screen ("Gradient descent", "The normal equations")."""
 
-SCRIPT_PROMPT = """Course:
+SCRIPT_PROMPT = """Length: {low}-{high} words in total, about {seconds} seconds.
+
+Course:
 {course}
 
 Frames you may show (id · time · chapter · what it shows):

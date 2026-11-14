@@ -1,0 +1,18 @@
+[Unit]
+Description=Engram worker (runs queued lectures)
+After=network.target
+
+[Service]
+User=devdi
+WorkingDirectory=/home/devdi/lec_to_course
+ExecStart=/home/devdi/lec_to_course/.venv/bin/engram worker
+Restart=always
+RestartSec=5
+# A stop interrupts the current stage; the next start resumes the job from the last
+# finished stage, so a short timeout loses at most one stage's work.
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
