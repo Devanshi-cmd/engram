@@ -19,7 +19,7 @@ The app binds to `127.0.0.1` only and accepts only the `engram.devanshitiwari.co
 ## Ship a change
 
 ```bash
-git pull && uv sync
+git pull && uv sync && npm ci --prefix tools/mermaid
 sudo systemctl restart engram-web
 curl -s https://engram.devanshitiwari.com/healthz
 ```

@@ -25,6 +25,13 @@ def fake_cli(monkeypatch: pytest.MonkeyPatch, stdout: str, seen: list[dict[str, 
     monkeypatch.setattr("engram.llm.claude_code.subprocess.run", run)
 
 
+READ_EVENT = json.dumps(
+    {
+        "type": "assistant",
+        "message": {"content": [{"type": "tool_use", "name": "Read",
+                                 "input": {"file_path": "WORKDIR/frames/f0044.jpg"}}]},
+    }
+)  # fmt: skip
 SUCCESS = json.dumps(
     {
         "type": "result",
@@ -44,15 +51,17 @@ def test_runs_lean_read_only_and_without_keys(
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")
     monkeypatch.setenv("ELEVENLABS_API_KEY", "el-secret")
     seen: list[dict[str, Any]] = []
-    fake_cli(monkeypatch, SUCCESS, seen)
+    fake_cli(monkeypatch, READ_EVENT.replace("WORKDIR", str(tmp_path)) + "\n" + SUCCESS, seen)
     value, result = run_claude_code(
         "hi", system="Be brief.", schema=Answer, model="opus", workdir=tmp_path,
         tools=("Read",), effort="medium",
     )  # fmt: skip
     assert value == Answer(word="hi")
     assert (result.turns, result.input_tokens, result.output_tokens) == (2, 105, 7)
+    assert result.files_read == ("frames/f0044.jpg",)  # seen in the event stream
     call = seen[0]
     cmd = call["cmd"]
+    assert call["input"] == "hi" and "hi" not in cmd  # on stdin: timelines outgrow argv
     assert "ANTHROPIC_API_KEY" not in call["env"] and "ELEVENLABS_API_KEY" not in call["env"]
     assert cmd[cmd.index("--system-prompt") + 1] == "Be brief."  # replaces Claude Code's own
     assert cmd[cmd.index("--tools") + 1] == "Read"

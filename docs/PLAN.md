@@ -171,6 +171,6 @@ Each milestone ends with: tests green, a demo, docs updated, a commit, and a che
 ## 8. Needed from you
 
 - `ELEVENLABS_API_KEY` in `.env` (needed from M1).
-- `ANTHROPIC_API_KEY` in `.env`, used **only** by the Haiku frame reader (needed from M3). Opus runs on the plan.
+- `ANTHROPIC_API_KEY` in `.env`, used **only** by Haiku (the frame reader from M3, the grounding judge from M4). Opus runs on the plan.
 - **A DNS record** in Cloudflare (M8): `A  engram → 165.99.53.30`, DNS only (grey cloud), the same as `devswarm`.
 - Approval of 2–3 sample lectures (M7). I'll propose MIT OCW picks: one slides, one blackboard, one handwritten tablet.

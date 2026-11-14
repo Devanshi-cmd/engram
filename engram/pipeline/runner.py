@@ -34,6 +34,8 @@ from engram.speech.models import Transcriber
 
 if TYPE_CHECKING:
     from engram.llm.frames import FrameReader
+    from engram.llm.judge import Judge
+    from engram.llm.reasoner import Reasoner
 
 EventSink = Callable[[str | None, str], None]
 
@@ -47,6 +49,20 @@ class Services:
     cache: PaidCache
     # None means headless Claude Code on the plan (needs the job folder, so it's built per job).
     frame_reader: FrameReader | None = None
+    # None means Opus through headless Claude Code on the plan.
+    reasoner: Reasoner | None = None
+    # None means Haiku through headless Claude Code; with an API key, Haiku through the API.
+    judge: Judge | None = None
+
+    def get_reasoner(self) -> Reasoner:
+        from engram.llm.reasoner import OpusReasoner
+
+        return self.reasoner or OpusReasoner()
+
+    def get_judge(self) -> Judge:
+        from engram.llm.judge import ClaudeCodeJudge
+
+        return self.judge or ClaudeCodeJudge()
 
     @property
     def frame_reader_name(self) -> str:

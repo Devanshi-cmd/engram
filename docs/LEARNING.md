@@ -128,3 +128,57 @@ Smaller lessons along the way:
 
 - **What:** the plan had Tesseract as a hint for Haiku and for consolidation. It's not used.
 - **Why:** M2's consolidation compares *ink* after alignment, which works on handwriting where OCR words don't. Haiku reads printed slides on its own. One less system dependency.
+
+## M4: Opus writes, code checks, Haiku judges
+
+- **What:** four stages (`chapters`, `write`, `check`, `course`). Opus plans chapters and writes each chapter's notes, key terms, diagrams, flashcards and quiz. Code resolves every anchor, parses every diagram and assembles the course. Haiku checks every card and question against the lecture.
+- **Why this split:** anything that can be checked by code is (stamps, frame ids, quotes, Mermaid syntax). The judgement calls go to two different models, so the one that wrote a quiz question isn't the one deciding it's supported.
+
+## Chapters in one pass, map-reduce only past 150 KB
+
+- **What:** the plan said map-reduce over 15-minute windows. Engram sends the whole timeline in one call when it fits in 150 KB (about 40,000 tokens), and uses map-reduce only beyond that.
+- **Why:** a two-hour lecture's timeline is about 150 KB, which Opus reads easily, and seeing the whole lecture gives better boundaries than merging windows that each saw a quarter of it. One call is also cheaper and quicker (15 s on CS229). The map-reduce path exists and is tested for longer lectures.
+- **Boundaries are checked, not trusted:** each `starts_at` must parse as a stamp. It is snapped to the nearest real timeline line, chapters under a minute are merged into the previous one, anything past the end is dropped, and the first chapter starts at 0:00.
+
+## Prompt on stdin, tool calls from the event stream
+
+- **What:** `run_claude_code` sends the prompt on stdin and reads `--output-format stream-json`.
+- **Why stdin:** Linux limits a single command-line argument to 128 KB, and a timeline can be bigger. A 160 KB test prompt worked on stdin.
+- **Why the stream:** the stream shows every `Read` call, so Engram records which frames Opus actually opened. Asking the model to list them would be self-reporting.
+
+## Anchors match words, not segments
+
+- **What:** a quote is matched against 60-word windows (stride 30) by letter trigrams, then refined to the word where it starts: best match over exactly the quote's length, then over two extra words (for fillers the timeline dropped), then the earliest.
+- **Bugs found while testing:** ties first went to the *latest* match ("this is data from Portland, Oregon" is said at 02:12 and again at 23:21), and the refinement started two words early because a window starting before the quote still contains all of it. Both have tests now.
+- **Own chapter first:** an item's quote is looked up inside its chapter before the whole lecture, because lecturers repeat themselves.
+- **Nothing invented:** a weak quote falls back to the frame anchor. A made-up frame id is ignored. An item that can't be placed gets no time and is listed under `unplaced`.
+
+## Mermaid checked by Mermaid
+
+- **What:** `tools/mermaid` runs Mermaid 11.4.1's own `parse()` in Node, with jsdom giving it the DOM it needs to load. One Node process checks all of a chapter's diagrams (about 0.8 s).
+- **Alternatives:** a regex "linter" would miss real errors. `mmdc` (Mermaid CLI) needs a headless Chromium. Checking with the same version the course page will load means "parses here" is "renders there".
+- **On failure:** one repair call with the parser's error message, then the diagram is dropped and recorded under `dropped_diagrams`. A broken diagram is never shown.
+
+## The grounding check uses a different model and real passages
+
+- **What:** for each card and question, code collects the speech from 40 s before to 70 s after its anchor, the speech around its quoted evidence, and the writing on frames on screen then. Haiku returns `supported`, `unsupported` or `ambiguous`. Only `supported` stays. A missing verdict counts as unsupported.
+- **Why Haiku:** a different model than the writer is a fairer judge, and the check is reading comprehension over a short passage, which Haiku does well at a fraction of a cent per chapter.
+- **Removed items are kept**, with the verdict and reason, under `removed` in `course.json`. The M7 eval can then measure the judge itself.
+
+## Opus's corrections are part of the output
+
+- **What:** each chapter returns `corrections`: frames Opus opened whose Haiku reading was wrong. On CS229 that was 20 corrections across 41 opened frames, and some changed the content: Haiku had read "Sigmoid / logistic regression" on the outline board, which says "Supervised learning → Regression"; it read an empty circle where the board says $\nabla_\theta J(\theta) = \vec 0$; and it wrote $X^T\theta$ for $X\theta$. Opus wrote the notes from the image, not the reading.
+- **Why keep them:** they show the two-model design working, they are the raw material for the M7 handwriting eval, and a future version could feed them back into the timeline.
+
+## M4 on CS229 (78 min)
+
+| Stage | Time | What happened |
+|---|---|---|
+| `chapters` | 15 s | 1 Opus call, 36k tokens in. 9 chapters that match the lecture's real structure, from "Supervised learning and the hypothesis" to "Deriving the normal equations" |
+| `write` | 124 s | 9 Opus calls, 4 at a time (6 min 40 s of Opus time). 232k tokens in, 47k out. 41 frames opened, 20 readings corrected |
+| `check` | 16 s | Haiku checked 78 cards and questions for $0.014. All supported |
+| `course` | 1 s | 106 notes, 8 diagrams, 50 cards, 28 questions. Every one of 228 anchors matched a quote exactly; none unplaced |
+
+- **Plan usage:** about $2.20 of API-equivalent Opus tokens, billed to the plan, not the API. The only real cost of M4 is the judge's $0.014.
+- **Diagrams:** all 8 parsed first time (the prompt's rules: quoted labels, Unicode not LaTeX). The repair path is tested with fakes.
+- **Is the judge just lenient?** Zero removals needed checking. Six planted items on chapter 5: the real question and card (supported), the same question with a wrong answer marked, a true fact the lecture never mentions (Cauchy, 1847), a card contradicting the lecture, and a question with two correct options. Haiku got all six right, the last as `ambiguous`, for $0.001. M7 turns this into a proper eval.

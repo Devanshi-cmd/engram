@@ -1,0 +1,10 @@
+{
+  "name": "engram-mermaid-check",
+  "private": true,
+  "description": "Syntax-checks Mermaid diagrams with Mermaid's own parser before they are shown.",
+  "type": "module",
+  "dependencies": {
+    "jsdom": "25.0.1",
+    "mermaid": "11.4.1"
+  }
+}

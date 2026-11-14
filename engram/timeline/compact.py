@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from engram.llm.frames import FrameReading
 from engram.speech.models import Transcript
 from engram.timeline.align import Span
+from engram.timeline.text import grams as _grams
 
 SPEECH_LOGPROB_FLAG = -0.6  # mean word log-probability of a segment below this is doubtful
 FRAME_CONFIDENCE_FLAG = 0.6
@@ -131,11 +132,6 @@ def build_timeline(
 
 def _norm(line: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"(\.\.\.|…|\[\?\])\s*$", "", line)).strip()
-
-
-def _grams(line: str) -> set[str]:
-    t = re.sub(r"[^a-z0-9]+", " ", line.lower())
-    return {t[i : i + 3] for i in range(len(t) - 2) if " " not in t[i : i + 3]}
 
 
 class _Seen:

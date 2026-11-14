@@ -21,14 +21,26 @@ engram/
     claude_code.py  Headless `claude -p`: keys stripped, minimal session, read-only, schema-checked
     frames.py       FrameReading schema + prompt; Haiku via the API, Claude Code fallback, fake
     reasoner.py     Opus via Claude Code (reads the timeline, opens only the frames it needs)
+    judge.py        Haiku as an independent checker (API, or Claude Code without a key)
   timeline/
     align.py        Words → the frame on screen when they were said
     compact.py      Flags + the compact timeline.md Opus reads
+    anchor.py       A frame id or a quote → a timestamp and a thumbnail
+    text.py         Letter-trigram matching, shared by the timeline and anchors
+  course/
+    prompts.py      Every course prompt, with PROMPT_VERSION in every cache key
+    schemas.py      What Opus must return (chapters, chapter content) and the judge's verdicts
+    chapters.py     Timeline → entries; one-pass or map-reduce chaptering; boundary checks
+    generate.py     One Opus call per chapter; Mermaid repair
+    mermaid.py      Mermaid's own parser in Node (tools/mermaid), the version the page uses
+    grounding.py    Source passages per card and question, and the Haiku verdicts
+    assemble.py     course.json and the Markdown export
   vision/similar.py Perceptual hash: the same slide shown twice is read once
   pipeline/
     store.py        SQLite: jobs, stages, progress events
     runner.py       The DAG runner, stage context, paid-call cache
     stages.py       The stages themselves
+    thinking.py     Opus calls, cached in the paid cache and recorded (time, tokens, files opened)
     hashing.py      File and data hashes that decide what's stale
   web/              FastAPI app, templates, DevSwarm theme (see below)
 ```
@@ -46,6 +58,10 @@ engram/
 | `align` | transcript, keyframes | `alignment.json` | Spans: one frame, a time range, the words spoken over it |
 | `read_frames` | frames, alignment | `readings.json` | Haiku reads each frame with the words spoken while it was up. 8 in parallel, cached by image + context |
 | `timeline` | transcript, alignment, readings | `timeline.md`, `flags.json` | What Opus reads: frames and speech interleaved, repeats and fillers removed |
+| `chapters` | timeline | `chapters.json` | Opus: title, overview, 4-12 chapters. Boundaries checked against real stamps |
+| `write` | timeline, chapters | `content.json` | Opus per chapter, 4 at a time: notes, key terms, diagrams, cards, quiz. Opens frames itself |
+| `check` | content, transcript, readings | `grounding.json` | Haiku checks every card and question against the source passages |
+| `course` | all of the above | `course.json`, `course.md`, `thumbs/` | Anchors → timestamps; unsupported items removed and recorded |
 
 ```mermaid
 flowchart LR
@@ -53,6 +69,7 @@ flowchart LR
   P --> K[keyframes] --> L
   L --> R[read_frames] --> TL[timeline]
   T --> TL
+  TL --> C[chapters] --> W[write] --> G[check] --> CO[course]
 ```
 
 ## Keyframes
@@ -140,3 +157,15 @@ A trivial call went from about 43,000 input tokens to 1,845. Opus checking one f
 ## The timeline
 
 `timeline.md` is what Opus reads instead of 120 images. Frames and speech appear in time order. Writing shown before isn't repeated: lines are matched on letter trigrams, because Haiku transcribes the same writing slightly differently each time. Fillers ("um", "uh") are dropped, and students are marked `(student)`. Flags (`⚠`) cover doubtful speech, low-confidence frames with real writing on them, and moments where the lecturer says "as you can see" while the reading says little. On CS229 it's 97 KB, with 68 of 120 frames shown and 30 flags.
+
+## The course (M4)
+
+Four stages turn the timeline into a course. Opus does the thinking; code does everything that can be checked.
+
+1. **Chapters.** Opus reads the whole timeline in one call (up to 150 KB, about 40,000 tokens: a two-hour lecture). Longer timelines are chaptered in 15-minute windows and merged in one more call. Opus must give each start as a stamp from the timeline. Code snaps it to the nearest real line, sorts the chapters, drops any shorter than a minute and starts the first at 0:00.
+2. **Write.** One Opus call per chapter, four at a time. Each sees its own slice of the timeline, the outline of every chapter (so chapters don't repeat each other) and the frame folder. It must open every flagged frame and every frame an item relies on, and report readings that turned out wrong (`corrections`). Engram records which files it actually opened, from Claude Code's event stream, rather than asking.
+3. **Diagrams** are parsed with Mermaid 11.4.1 in Node before anyone sees them. A failure gets one repair call with the parser's error message. If it still fails, the diagram is dropped and recorded.
+4. **Check.** For every flashcard and quiz question, code gathers the source passages: the speech from 40 s before to 70 s after its anchor, the speech around its quoted evidence, and the writing on the frames shown then. Haiku, a different model from the one that wrote the item, decides `supported`, `unsupported` or `ambiguous`. Only `supported` items stay. The rest are kept in `course.json` under `removed`, with the reason.
+5. **Assemble.** Every anchor becomes a time: a quote is matched to the word where it starts (letter trigrams over 60-word windows, ties to the earliest match, the item's own chapter first). A frame anchor uses that frame's time on screen within the chapter. An item that can't be placed gets no time and is listed under `unplaced`.
+
+Every Opus and Haiku answer is cached by its exact prompt, so re-running a job, or a stage whose inputs didn't change in substance, asks nothing again. The prompt goes to `claude -p` on stdin, because a timeline is bigger than the 128 KB a single command-line argument may be.

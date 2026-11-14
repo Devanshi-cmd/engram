@@ -11,6 +11,10 @@ Three things keep it cheap and safe:
 - **Read-only, inside one folder.** Lecture frames can contain any text, so the model gets
   the Read tool at most, with the job folder as its working directory. No shell, no network,
   no writes. Output must match a JSON schema, which Claude Code validates.
+
+The prompt goes in on stdin (a lecture timeline is bigger than the 128 KB a single
+command-line argument may be), and the output is the event stream, so Engram records which
+files the model actually opened instead of asking it.
 """
 
 from __future__ import annotations
@@ -47,6 +51,7 @@ class ClaudeCodeResult:
     turns: int
     input_tokens: int
     output_tokens: int
+    files_read: tuple[str, ...] = ()  # paths the model opened with Read, relative to workdir
 
 
 def claude_binary() -> str:
@@ -77,7 +82,7 @@ def run_claude_code[T: BaseModel](
 ) -> tuple[T, ClaudeCodeResult]:
     """One headless Claude Code call that must return an instance of `schema`."""
     cmd = [
-        claude_binary(), "-p", prompt,
+        claude_binary(), "-p",
         "--model", model,
         "--system-prompt", system,
         "--tools", ",".join(tools),
@@ -85,7 +90,7 @@ def run_claude_code[T: BaseModel](
         "--setting-sources", "",
         "--disable-slash-commands",
         "--no-session-persistence",
-        "--output-format", "json",
+        "--output-format", "stream-json", "--verbose",
         "--json-schema", json.dumps(schema.model_json_schema()),
         "--max-turns", str(max_turns),
     ]  # fmt: skip
@@ -97,17 +102,19 @@ def run_claude_code[T: BaseModel](
     try:
         done = subprocess.run(
             cmd, cwd=workdir, env=clean_env(), capture_output=True, text=True,
-            timeout=timeout, stdin=subprocess.DEVNULL,
+            timeout=timeout, input=prompt,
         )  # fmt: skip
     except subprocess.TimeoutExpired as e:
         raise ProviderError(f"Claude Code took longer than {timeout:.0f} s and was stopped.") from e
-    try:
-        out = json.loads(done.stdout)
-    except json.JSONDecodeError as e:
+    events = _events(done.stdout)
+    out = next((e for e in reversed(events) if e.get("type") == "result"), None)
+    if out is None and events:
+        out = events[-1]
+    if out is None:
         detail = (done.stderr or done.stdout or f"exit code {done.returncode}").strip()
         if "login" in detail.lower() or "auth" in detail.lower():
-            raise EngramError("Claude Code on this machine isn't logged in (run `claude`).") from e
-        raise ProviderError(f"Claude Code failed: {detail[-300:]}") from e
+            raise EngramError("Claude Code on this machine isn't logged in (run `claude`).")
+        raise ProviderError(f"Claude Code failed: {detail[-300:]}")
     if out.get("is_error") or out.get("subtype") != "success":
         raise ProviderError(f"Claude Code failed: {str(out.get('result') or out)[:300]}")
     try:
@@ -124,4 +131,33 @@ def run_claude_code[T: BaseModel](
         + int(usage.get("cacheReadInputTokens", 0))
         + int(usage.get("cacheCreationInputTokens", 0)),
         output_tokens=int(usage.get("outputTokens", 0)),
+        files_read=_files_read(events, workdir),
     )
+
+
+def _events(stdout: str) -> list[dict[str, Any]]:
+    events = []
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return events
+
+
+def _files_read(events: list[dict[str, Any]], workdir: Path) -> tuple[str, ...]:
+    root = workdir.resolve()
+    seen: list[str] = []
+    for event in events:
+        if event.get("type") != "assistant":
+            continue
+        for block in event.get("message", {}).get("content", []):
+            if block.get("type") == "tool_use" and block.get("name") == "Read":
+                path = Path(str(block.get("input", {}).get("file_path", "")))
+                if path.is_relative_to(root):
+                    path = path.relative_to(root)
+                if str(path) not in seen:
+                    seen.append(str(path))
+    return tuple(seen)

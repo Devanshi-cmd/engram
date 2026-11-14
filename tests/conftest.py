@@ -12,6 +12,7 @@ from engram.llm.frames import FakeFrameReader
 from engram.pipeline import Runner, Services, build_runner
 from engram.pipeline.runner import PaidCache
 from engram.speech.fake import FakeTranscriber
+from tests.fakes import FakeJudge, FakeReasoner
 
 
 def make_video(path: Path, seconds: float = 3, *, audio: bool = True, video: bool = True) -> Path:
@@ -46,10 +47,25 @@ def frame_reader() -> FakeFrameReader:
 
 
 @pytest.fixture
+def reasoner() -> FakeReasoner:
+    return FakeReasoner()
+
+
+@pytest.fixture
+def judge() -> FakeJudge:
+    return FakeJudge()
+
+
+@pytest.fixture
 def services(
-    settings: Settings, transcriber: FakeTranscriber, frame_reader: FakeFrameReader
+    settings: Settings,
+    transcriber: FakeTranscriber,
+    frame_reader: FakeFrameReader,
+    reasoner: FakeReasoner,
+    judge: FakeJudge,
 ) -> Services:
-    return Services(settings, transcriber, PaidCache(settings.data_dir / "cache"), frame_reader)
+    cache = PaidCache(settings.data_dir / "cache")
+    return Services(settings, transcriber, cache, frame_reader, reasoner, judge)
 
 
 @pytest.fixture(autouse=True)

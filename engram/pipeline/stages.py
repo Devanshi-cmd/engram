@@ -2,16 +2,28 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
+from typing import Any
 
+import cv2
+from pydantic import BaseModel
+
+from engram.course.assemble import build_course, item_ids, to_markdown
+from engram.course.chapters import Chapter, plan_chapters, split_timeline
+from engram.course.generate import check_diagrams, write_chapter
+from engram.course.grounding import Item, Sources, card_item, ground, quiz_item
+from engram.course.prompts import PROMPT_VERSION
+from engram.course.schemas import ChapterContent, ItemVerdict
 from engram.errors import MediaError, ProviderError
 from engram.llm.frames import ClaudeCodeFrameReader, FrameContext, FrameReader, FrameReading, Read
+from engram.llm.judge import Judge
 from engram.media import MediaInfo, extract_audio, probe
 from engram.pipeline.hashing import file_sha256, key_of
-from engram.pipeline.runner import Stage, StageContext
+from engram.pipeline.runner import PaidCache, Stage, StageContext
+from engram.pipeline.thinking import Thinker
 from engram.speech import Transcript, to_segments
-from engram.timeline import Span, align_words
+from engram.timeline import Anchors, Span, align_words
 from engram.timeline.compact import build_flags, build_timeline, clock
 from engram.vision.keyframes import extract_frame, find_keyframes
 from engram.vision.similar import dhash, group_same
@@ -200,6 +212,200 @@ def _timeline(ctx: StageContext) -> str:
     return f"{len(text) / 1000:.0f} KB · {len(flags)} flags"
 
 
+# --- The course: Opus plans and writes, Haiku checks, code assembles ---------------------
+
+CHAPTER_WORKERS = 4
+THUMB_WIDTH = 480
+
+
+def _thinker(ctx: StageContext) -> Thinker:
+    return Thinker(ctx.services.get_reasoner(), ctx.services.cache, ctx.job_dir)
+
+
+def _usage(thinker: Thinker) -> str:
+    report = thinker.report()
+    fresh = report["fresh_calls"]
+    if not fresh:
+        return "reused"
+    calls = f"{fresh} Opus call{'s' if fresh > 1 else ''}"
+    return f"{calls} · {_clock(report['seconds'])} of thinking"
+
+
+def _chapters(ctx: StageContext) -> str:
+    info = MediaInfo.model_validate(ctx.read_json("media.json"))
+    timeline = split_timeline(ctx.path("timeline.md").read_text())
+    thinker = _thinker(ctx)
+    ctx.progress("Opus is reading the whole timeline")
+    title, overview, chapters = plan_chapters(thinker, timeline, info.duration)
+    ctx.write_json(
+        "chapters.json",
+        {"title": title, "overview": overview, "chapters": [asdict(c) for c in chapters],
+         "reasoning": thinker.report()},
+    )  # fmt: skip
+    return f"{len(chapters)} chapters · {_usage(thinker)}"
+
+
+def _load_chapters(ctx: StageContext) -> tuple[dict[str, Any], list[Chapter]]:
+    plan = ctx.read_json("chapters.json")
+    return plan, [Chapter(**c) for c in plan["chapters"]]
+
+
+def _write(ctx: StageContext) -> str:
+    plan, chapters = _load_chapters(ctx)
+    timeline = split_timeline(ctx.path("timeline.md").read_text())
+    thinker = _thinker(ctx)
+    course = plan["title"] or ctx.job.title
+
+    def one(chapter: Chapter) -> tuple[int, ChapterContent, dict[str, Any]]:
+        try:
+            content = write_chapter(thinker, course, chapters, chapter, timeline)
+        except ProviderError:  # one retry: a long Opus call can time out or hit a rate limit
+            content = write_chapter(thinker, course, chapters, chapter, timeline)
+        checked = check_diagrams(thinker, f"chapter {chapter.number}", content.diagrams)
+        content = content.model_copy(update={"diagrams": checked.kept})
+        return chapter.number, content, {"repaired": checked.repaired, "dropped": checked.dropped}
+
+    ctx.progress(f"Opus is writing {len(chapters)} chapters, {CHAPTER_WORKERS} at a time")
+    out: dict[str, Any] = {}
+    with ThreadPoolExecutor(CHAPTER_WORKERS) as pool:
+        futures = [pool.submit(one, c) for c in chapters]
+        for done, future in enumerate(as_completed(futures), 1):
+            number, content, diagrams = future.result()
+            out[str(number)] = {"content": content.model_dump(), "diagrams": diagrams}
+            ctx.progress(f"Wrote {done} of {len(chapters)} chapters")
+    ctx.write_json("content.json", {"chapters": out, "reasoning": thinker.report()})
+    contents = [ChapterContent.model_validate(v["content"]) for v in out.values()]
+    cards = sum(len(c.flashcards) for c in contents)
+    questions = sum(len(c.quiz) for c in contents)
+    dropped = sum(len(v["diagrams"]["dropped"]) for v in out.values())
+    parts = [f"{cards} cards", f"{questions} questions",
+             f"{sum(len(c.diagrams) for c in contents)} diagrams"]  # fmt: skip
+    if dropped:
+        parts.append(f"{dropped} broken diagram{'s' if dropped > 1 else ''} dropped")
+    return " · ".join([*parts, _usage(thinker)])
+
+
+class _CachedJudge:
+    """The same check of the same items is never paid for twice."""
+
+    def __init__(self, judge: Judge, cache: PaidCache) -> None:
+        self.judge, self.cache, self.name = judge, cache, judge.name
+        self.reused = 0
+
+    def run[T: BaseModel](self, prompt: str, *, system: str, schema: type[T]) -> tuple[T, float]:
+        key = key_of({"by": self.judge.name, "system": system, "prompt": prompt})
+        saved = self.cache.get("grounding", key)
+        if saved is not None:
+            self.reused += 1
+            return schema.model_validate(saved), 0.0
+        value, cost = self.judge.run(prompt, system=system, schema=schema)
+        self.cache.put("grounding", key, value.model_dump())
+        return value, cost
+
+
+def _anchors(ctx: StageContext) -> Anchors:
+    transcript = Transcript.model_validate(ctx.read_json("transcript.json"))
+    spans = [Span.model_validate(s) for s in ctx.read_json("alignment.json")]
+    return Anchors(transcript.words, spans)
+
+
+def _contents(ctx: StageContext) -> dict[int, ChapterContent]:
+    raw = ctx.read_json("content.json")["chapters"]
+    return {int(n): ChapterContent.model_validate(v["content"]) for n, v in raw.items()}
+
+
+def _check(ctx: StageContext) -> str:
+    _, chapters = _load_chapters(ctx)
+    contents = _contents(ctx)
+    anchors = _anchors(ctx)
+    frames = ctx.read_json("readings.json")["frames"]
+    sources = Sources(anchors, {f: r["key_text"] for f, r in frames.items()})
+    judge = _CachedJudge(ctx.services.get_judge(), ctx.services.cache)
+
+    def one(chapter: Chapter) -> tuple[dict[str, ItemVerdict], float]:
+        content = contents[chapter.number]
+        within = (chapter.start, chapter.end)
+        card_ids, quiz_ids = item_ids(chapter.number, content)
+        items: list[Item] = []
+        for item_id, card in zip(card_ids, content.flashcards, strict=True):
+            m = anchors.locate(card.anchor, within)
+            items.append(card_item(item_id, card, m.t if m else None, m.frame if m else None))
+        for item_id, q in zip(quiz_ids, content.quiz, strict=True):
+            m = anchors.locate(q.anchor, within)
+            items.append(quiz_item(item_id, q, m.t if m else None, m.frame if m else None))
+        return ground(judge, sources, items, within)
+
+    ctx.progress(f"{judge.name} is checking every card and question against the lecture")
+    verdicts: dict[str, ItemVerdict] = {}
+    cost = 0.0
+    with ThreadPoolExecutor(CHAPTER_WORKERS) as pool:
+        for found, spent in pool.map(one, chapters):
+            verdicts.update(found)
+            cost += spent
+    ctx.add_cost(cost)
+    ctx.write_json(
+        "grounding.json",
+        {"judge": judge.name, "cost_usd": round(cost, 5),
+         "verdicts": {k: v.model_dump() for k, v in verdicts.items()}},
+    )  # fmt: skip
+    bad = [v for v in verdicts.values() if v.verdict != "supported"]
+    parts = [f"{len(verdicts)} checked", f"{len(bad)} removed", f"${cost:.3f}"]
+    if judge.reused:
+        parts.append("reused")
+    return " · ".join(parts)
+
+
+def _course(ctx: StageContext) -> str:
+    info = MediaInfo.model_validate(ctx.read_json("media.json"))
+    plan, chapters = _load_chapters(ctx)
+    content = ctx.read_json("content.json")
+    grounding = ctx.read_json("grounding.json")
+    course = build_course(
+        title=plan["title"], lecture_title=ctx.job.title, overview=plan["overview"],
+        duration=info.duration, chapters=chapters, contents=_contents(ctx),
+        diagram_notes={int(n): v["diagrams"] for n, v in content["chapters"].items()},
+        verdicts={k: ItemVerdict.model_validate(v) for k, v in grounding["verdicts"].items()},
+        anchors=_anchors(ctx),
+    )  # fmt: skip
+    calls = plan["reasoning"]["calls"] + content["reasoning"]["calls"]
+    opened = sorted({f for c in calls for f in c["files_read"] if f.startswith("frames/")})
+    course["stats"] = {
+        "opus_calls": len(plan["reasoning"]["calls"]) + len(content["reasoning"]["calls"]),
+        "opus_seconds": plan["reasoning"]["seconds"] + content["reasoning"]["seconds"],
+        "frames_opened_by_opus": opened,
+        "grounding_judge": grounding["judge"],
+        "grounding_cost_usd": grounding["cost_usd"],
+    }
+    thumbs = ctx.path("thumbs")
+    thumbs.mkdir(exist_ok=True)
+    for frame in course["frames"]:
+        _thumbnail(ctx.path(f"frames/{frame}.jpg"), thumbs / f"{frame}.jpg")
+    ctx.write_json("course.json", course)
+    ctx.path("course.md").write_text(to_markdown(course))
+    chs = course["chapters"]
+    points = sum(len(s["points"]) for c in chs for s in c["sections"])
+    cards = sum(len(c["flashcards"]) for c in chs)
+    questions = sum(len(c["quiz"]) for c in chs)
+    diagrams = sum(len(c["diagrams"]) for c in chs)
+    parts = [f"{len(chs)} chapters", f"{points} notes", f"{diagrams} diagrams",
+             f"{cards} cards", f"{questions} questions"]  # fmt: skip
+    if course["unplaced"]:
+        parts.append(f"{len(course['unplaced'])} without a timestamp")
+    return " · ".join(parts)
+
+
+def _thumbnail(source: Any, target: Any) -> None:
+    image = cv2.imread(str(source))
+    if image is None:
+        return
+    h, w = image.shape[:2]
+    if w > THUMB_WIDTH:
+        image = cv2.resize(
+            image, (THUMB_WIDTH, round(h * THUMB_WIDTH / w)), interpolation=cv2.INTER_AREA
+        )
+    cv2.imwrite(str(target), image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+
+
 def _clock(seconds: float) -> str:
     s = int(round(seconds))
     h, m, s = s // 3600, s % 3600 // 60, s % 60
@@ -255,5 +461,36 @@ STAGES: list[Stage] = [
         deps=("probe", "transcribe", "align", "read_frames"),
         outputs=("timeline.md", "flags.json"),
         version=2,  # v2: fuzzy repeat-line matching, fillers dropped, fragments not flagged
+    ),
+    Stage(
+        "chapters",
+        "Finding the chapters",
+        _chapters,
+        deps=("probe", "timeline"),
+        outputs=("chapters.json",),
+        params=lambda s: {"by": s.get_reasoner().name, "prompts": PROMPT_VERSION},
+    ),
+    Stage(
+        "write",
+        "Writing notes, diagrams, cards and the quiz",
+        _write,
+        deps=("timeline", "chapters"),
+        outputs=("content.json",),
+        params=lambda s: {"by": s.get_reasoner().name, "prompts": PROMPT_VERSION},
+    ),
+    Stage(
+        "check",
+        "Checking cards and questions against the lecture",
+        _check,
+        deps=("transcribe", "align", "read_frames", "chapters", "write"),
+        outputs=("grounding.json",),
+        params=lambda s: {"by": s.get_judge().name, "prompts": PROMPT_VERSION},
+    ),
+    Stage(
+        "course",
+        "Putting the course together",
+        _course,
+        deps=("probe", "transcribe", "align", "read_frames", "chapters", "write", "check"),
+        outputs=("course.json", "course.md", "thumbs"),
     ),
 ]
