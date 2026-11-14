@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
+
 from engram.errors import MediaError
-from engram.media import extract_audio, probe
+from engram.media import MediaInfo, extract_audio, probe
 from engram.pipeline.hashing import file_sha256, key_of
 from engram.pipeline.runner import Stage, StageContext
 from engram.speech import Transcript, to_segments
+from engram.timeline import align_words
+from engram.vision.keyframes import extract_frame, find_keyframes
 
 
 def _probe(ctx: StageContext) -> str:
@@ -60,6 +65,50 @@ def _transcribe(ctx: StageContext) -> str:
 LOW_BALANCE_MINUTES = 60
 
 
+def _keyframes(ctx: StageContext) -> str:
+    info = MediaInfo.model_validate(ctx.read_json("media.json"))
+    video = ctx.job.source_path
+    total = _clock(info.duration)
+    result, times = find_keyframes(
+        video, info.duration, progress=lambda t: ctx.progress(f"Scanning {_clock(t)} of {total}")
+    )
+    folder = ctx.path("frames")
+    folder.mkdir(exist_ok=True)
+    for stale in folder.glob("*.jpg"):
+        stale.unlink()
+    ctx.progress(f"Saving {len(result.keyframes)} frames at full size")
+    with ThreadPoolExecutor(4) as pool:
+        list(pool.map(lambda k: extract_frame(video, times[k.id], folder / f"{k.id}.jpg"),
+                      result.keyframes))  # fmt: skip
+    ctx.write_json(
+        "keyframes.json",
+        {
+            "frames": [{**asdict(k), "file": f"frames/{k.id}.jpg"} for k in result.keyframes],
+            "stats": {
+                "sampled": result.samples,
+                "views": result.views,
+                "dropped_as_covered": result.dropped_as_covered,
+            },
+        },
+    )
+    readable = sum(k.has_text for k in result.keyframes)
+    return (
+        f"{len(result.keyframes)} frames from {result.views} views · "
+        f"{readable} with writing · {result.samples:,} sampled"
+    )
+
+
+def _align(ctx: StageContext) -> str:
+    info = MediaInfo.model_validate(ctx.read_json("media.json"))
+    transcript = Transcript.model_validate(ctx.read_json("transcript.json"))
+    frames = ctx.read_json("keyframes.json")["frames"]
+    views = [(f["id"], start, end) for f in frames for start, end in f["views"]]
+    spans = align_words(views, transcript.words, info.duration)
+    ctx.write_json("alignment.json", [s.model_dump() for s in spans])
+    silent = sum(1 for s in spans if s.first_word == s.end_word)
+    return f"{len(spans)} spans · {silent} without speech"
+
+
 def _clock(seconds: float) -> str:
     s = int(round(seconds))
     h, m, s = s // 3600, s % 3600 // 60, s % 60
@@ -85,5 +134,19 @@ STAGES: list[Stage] = [
         outputs=("transcript.json",),
         version=2,  # v2: filler fragments wait up to 5 s for the rest of their sentence
         params=lambda s: {"by": s.transcriber.name},
+    ),
+    Stage(
+        "keyframes",
+        "Finding the key frames",
+        _keyframes,
+        deps=("probe",),
+        outputs=("keyframes.json", "frames"),
+    ),
+    Stage(
+        "align",
+        "Lining up speech and frames",
+        _align,
+        deps=("probe", "transcribe", "keyframes"),
+        outputs=("alignment.json",),
     ),
 ]

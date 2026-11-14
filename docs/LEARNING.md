@@ -74,3 +74,30 @@ Each entry records what was decided, why, and what else was considered.
 
 - **What:** A segment of fewer than 4 words doesn't end at a pause of up to 5 s. It waits for the rest of its sentence. (Recall used 2 s.)
 - **Why:** On the full CS229 lecture, a lecturer thinking at the board produced segments like "um," and "which is" on their own. With a 5 s wait, 689 segments became 674, and "um, which is called the learning rate." reads as one line. Re-segmenting reused the paid transcript and took 0.2 s.
+
+## M2: keyframes for a camera that follows the lecturer
+
+The test lecture (CS229 Lecture 2) is the hard case: the camera pans to follow Andrew Ng almost constantly, he stands in front of the board, and there are hard cuts to plotted slides. Each version below was measured on the full 78 minutes, and each failure shaped the next.
+
+| Version | Keyframes | What was wrong |
+|---|---|---|
+| Recall's whole-frame hash | n/a | The camera never stops moving, so every frame "changes" |
+| Ink + pan + "single later frame covers it" | 219 | Matching found its points on Andrew's shirt rather than the board, so repeated views of a board were never matched |
+| Matching on the writing only, with later frames *together* covering an earlier one | 216 | "Person" boxes sometimes covered 100% of the frame (his outline touched the writing), so frames lost all ink and looked like wipes |
+| Person = tall *columns* of the shape that stands on the floor | **120** | A good result: distinct boards, the finished state of each, slides kept |
+
+Smaller lessons along the way:
+
+- **Track the camera on the writing, not the frame.** Phase correlation on whole frames tracks the lecturer (the camera follows him too). Painting him out doesn't help: the painted patch has edges that move with him. Ink is fixed to the board, so its shift is the camera's.
+- **Writing looks like motion.** New letters shift the ink pattern. Only a moving board (its pixels change, the person excluded) can be a pan, and the match must be confident.
+- **A plot isn't a person.** The first person rule ("any tall connected shape") deleted a slide's plot, axes and all. People stand on the floor: their shape reaches the bottom of the frame.
+- **The finished board wins ties.** Within 5%, a later frame replaces an earlier one, so a line half-written at 33 s loses to the same line finished at 39 s.
+- **Revisits go both ways.** Going backwards keeps the finished board. Going forwards drops a return visit that shows nothing new.
+- **"Erase" was the wrong name.** Most sudden ink drops are the lecturer or a zoom hiding the writing, not a wipe. The view should still end, but the label is now `change`.
+- **Not done: a clean-board composite.** Merging frames to remove the lecturer entirely doesn't work here, because the camera follows him and he stays in the middle of the shot. A board mosaic across pans is possible future work.
+- **Tests draw their own lecture.** `tests/synthetic.py` renders a whiteboard, a lecturer-shaped figure, a pan, a wipe and a cut, so every rule has a known answer.
+
+## Speech goes to the frame on screen at the word's midpoint
+
+- **What:** Views tile the lecture with no gaps, and each word belongs to the view containing its midpoint.
+- **Why:** A word straddling a cut belongs where most of it was said, and there are no unassigned words. On CS229, the span for the gradient-descent frame (24:51–25:33) holds the exact sentence describing what's on the board: "theta J minus alpha … the learning rate … the partial derivative of the cost function J of theta with respect to theta J".

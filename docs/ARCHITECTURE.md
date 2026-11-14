@@ -15,6 +15,10 @@ engram/
     scribe.py       ElevenLabs Scribe client: retries, credit errors, balance check
     segments.py     Words → sentence-sized segments
     fake.py         Scripted transcriber for tests
+  vision/
+    keyframes.py    Views, best frame per view, consolidation (see below)
+  timeline/
+    align.py        Words → the frame on screen when they were said
   pipeline/
     store.py        SQLite: jobs, stages, progress events
     runner.py       The DAG runner, stage context, paid-call cache
@@ -32,11 +36,35 @@ engram/
 | `probe` | the video | `media.json` | Rejects files with no video or no audio stream, or longer than `ENGRAM_MAX_MINUTES` (120) |
 | `audio` | the video | `audio.mp3` | Mono 16 kHz, 64 kbps, no tags, bit-exact. The same speech always gives the same bytes |
 | `transcribe` | `audio.mp3` | `transcript.json` | Scribe with word timestamps and speakers. The job title is sent as key terms |
+| `keyframes` | the video | `keyframes.json`, `frames/` | Runs alongside audio and transcription. Full-size JPEGs of the best frame per view |
+| `align` | transcript, keyframes | `alignment.json` | Spans: one frame, a time range, the words spoken over it |
 
 ```mermaid
 flowchart LR
-  P[probe] --> A[audio] --> T[transcribe]
+  P[probe] --> A[audio] --> T[transcribe] --> L[align]
+  P --> K[keyframes] --> L
 ```
+
+## Keyframes
+
+A filmed lecture isn't a screen recording. The camera follows the lecturer, so every frame differs from the last, and the lecturer usually stands in front of the board. `vision/keyframes.py` works on **ink** instead of pixels, and on **views** (what the camera points at) instead of single frames. It makes one pass at 1 fps, 480 px wide, decoded by a single ffmpeg pipe (about 30× real time for 720p AV1).
+
+| Step | How |
+|---|---|
+| Ink | A black-hat filter keeps thin dark strokes (white-hat on a blackboard). Board edges and the pen tray are dropped. |
+| Person | A tall shape that stands on the floor (reaches the bottom of the frame, or fills most of its height). Its *tall columns* become the person region, so writing that merely touches their outline isn't swallowed. Ink inside the region doesn't count. |
+| Camera motion | The board is moving when its pixels, the person excluded, change on average by 8 grey levels or more. Then phase correlation on the **ink maps** gives the pan, accepted only when the match is confident. A view ends after a pan of ¼ of the frame. |
+| Cut | The histogram correlation drops below 0.5 *and* the mean pixel change exceeds 45. Pans peak at about 33, cuts are about 90. |
+| Change | Visible ink falls below 30% of the view's best at once, or below 60% for 4 s: the board was wiped, or a zoom or the lecturer hid it. |
+| Best frame | The still frame with the most visible ink × (1 − ½ person share) × sharpness. Later frames win within 5%, because they show the finished board. |
+| Overlay | Ink present in 70% of all frames is a logo, not writing. |
+| Consolidation | ORB features taken from the writing only, plus a RANSAC similarity transform (a pure ink shift when there's too little writing for features). Backwards pass: a frame is dropped if the frames after it, within 3 min, show 80% of its ink between them. Forwards pass: a revisit that adds nothing is dropped. Dropped frames hand their time ranges to the frame that shows the same board. |
+
+On CS229 Lecture 2 (78 min, 720p): 4,697 samples → 162 views → **120 keyframes** in 156 s, running alongside transcription.
+
+## Alignment
+
+`timeline/align.py` sorts every view (frame id, start, end), stretches them to tile `0..duration`, and puts each word in the view containing its midpoint. Consecutive views of the same frame merge into one span. A frame the camera returns to later gets a second span. Each span keeps the index range of its words, so later stages can quote exactly what was said while a frame was on screen.
 
 ## The runner
 
