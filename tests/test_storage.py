@@ -117,3 +117,11 @@ def test_signed_links_carry_the_size_and_expire() -> None:
     assert query["X-Amz-Expires"] == ["3600"]
     get = parse_qs(urlparse(r2.url("jobs/x/summary.mp4", download="s.mp4")).query)
     assert get["response-content-disposition"] == ['attachment; filename="s.mp4"']
+
+
+def test_the_account_can_be_an_id_or_the_endpoint_url() -> None:
+    from engram.storage import r2_origin
+
+    assert r2_origin("abc123") == "https://abc123.r2.cloudflarestorage.com"
+    pasted = "https://abc123.r2.cloudflarestorage.com/engram"
+    assert r2_origin(pasted) == "https://abc123.r2.cloudflarestorage.com"

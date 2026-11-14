@@ -43,7 +43,7 @@ class R2Storage:
         from botocore.config import Config
 
         self.bucket = bucket
-        self.origin = f"https://{account_id}.r2.cloudflarestorage.com"
+        self.origin = r2_origin(account_id)
         self.client = client or boto3.client(
             "s3", endpoint_url=self.origin, aws_access_key_id=access_key,
             aws_secret_access_key=secret_key, region_name="auto",
@@ -107,6 +107,19 @@ class R2Storage:
                 "AllowedHeaders": ["content-type"], "MaxAgeSeconds": 3600,
             }]},
         )  # fmt: skip
+
+
+def r2_origin(account: str) -> str:
+    """The bucket endpoint from an account id, or from the endpoint URL itself (the R2 page
+    shows both, and either may be pasted): "abc123" and "https://abc123.r2.cloudflarestorage.com/x"
+    both give "https://abc123.r2.cloudflarestorage.com"."""
+    from urllib.parse import urlparse
+
+    account = account.strip()
+    if "://" in account:
+        host = urlparse(account).hostname or ""
+        account = host.split(".")[0]
+    return f"https://{account}.r2.cloudflarestorage.com"
 
 
 def storage_from(settings: Settings) -> Storage | None:
