@@ -40,8 +40,13 @@ def default_services(settings: Settings, transcriber: Transcriber | None = None)
 
         reader = HaikuFrameReader(settings.anthropic_api_key)
         judge = HaikuJudge(settings.anthropic_api_key)
+    narrator = None
+    if settings.elevenlabs_api_key and settings.elevenlabs_voice_id:
+        from engram.voice.elevenlabs import ElevenLabsNarrator
+
+        narrator = ElevenLabsNarrator(settings.elevenlabs_api_key, settings.elevenlabs_voice_id)
     cache = PaidCache(settings.data_dir / "cache")
-    return Services(settings, transcriber, cache, reader, judge=judge)
+    return Services(settings, transcriber, cache, reader, judge=judge, narrator=narrator)
 
 
 def build_runner(services: Services, stages: list[Stage] | None = None) -> Runner:

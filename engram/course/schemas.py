@@ -116,3 +116,20 @@ class ItemVerdict(BaseModel):
 
 class GroundingReport(BaseModel):
     verdicts: list[ItemVerdict]
+
+
+# --- The narrated summary --------------------------------------------------------------
+
+
+class Scene(BaseModel):
+    frame: str = Field(description="Id of the frame to show (like f0044), or '' for a title card")
+    heading: str = Field(description="Short on-screen heading, at most 40 characters")
+    narration: str = Field(
+        description="What the narrator says over this scene: plain spoken English, no symbols"
+    )
+
+
+class SummaryScript(BaseModel):
+    title: str = Field(description="The opening card's title, at most 60 characters")
+    subtitle: str = Field(description="One line under it, at most 70 characters")
+    scenes: list[Scene]

@@ -10,7 +10,13 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from engram.course.schemas import ChapterContent, ChapterPlan, GroundingReport, MermaidFix
+from engram.course.schemas import (
+    ChapterContent,
+    ChapterPlan,
+    GroundingReport,
+    MermaidFix,
+    SummaryScript,
+)
 from engram.llm.claude_code import ClaudeCodeResult
 
 STAMPED = re.compile(r"^\[([\d:]+)\] (?!FRAME)(?:\(student\) )?(.+)$", re.M)
@@ -43,6 +49,8 @@ class FakeReasoner:
             files = (f"frames/{frames[0]}.jpg",) if frames else ()
         elif schema is MermaidFix:
             value = MermaidFix(mermaid=self.repair)
+        elif schema is SummaryScript:
+            value = self._script(prompt)
         else:
             raise AssertionError(f"unexpected schema {schema}")
         out = schema.model_validate(value.model_dump())
@@ -50,6 +58,22 @@ class FakeReasoner:
 
     def count(self, schema: type[BaseModel]) -> int:
         return sum(1 for name, _ in self.calls if name == schema.__name__)
+
+    script_frame = ""  # a frame id to put in the script; "" picks the first one offered
+
+    def _script(self, prompt: str) -> SummaryScript:
+        offered = re.findall(r"^(f\d+) · ", prompt, re.M)
+        frame = self.script_frame or (offered[0] if offered else "")
+        return SummaryScript.model_validate(
+            {
+                "title": "A synthetic lecture",
+                "subtitle": "Engram test suite",
+                "scenes": [
+                    {"frame": "", "heading": "", "narration": "Here is what h of x means."},
+                    {"frame": frame, "heading": "The sum", "narration": "It's θ_j x_j, summed."},
+                ],
+            }
+        )
 
     @staticmethod
     def _plan(prompt: str) -> ChapterPlan:

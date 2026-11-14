@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from engram.llm.frames import FrameReader
     from engram.llm.judge import Judge
     from engram.llm.reasoner import Reasoner
+    from engram.voice.models import Narrator
 
 EventSink = Callable[[str | None, str], None]
 
@@ -53,6 +54,8 @@ class Services:
     reasoner: Reasoner | None = None
     # None means Haiku through headless Claude Code; with an API key, Haiku through the API.
     judge: Judge | None = None
+    # None means no voice is configured: the narrate stage fails with a readable message.
+    narrator: Narrator | None = None
 
     def get_reasoner(self) -> Reasoner:
         from engram.llm.reasoner import OpusReasoner

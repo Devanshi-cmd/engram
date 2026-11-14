@@ -182,3 +182,46 @@ Smaller lessons along the way:
 - **Plan usage:** about $2.20 of API-equivalent Opus tokens, billed to the plan, not the API. The only real cost of M4 is the judge's $0.014.
 - **Diagrams:** all 8 parsed first time (the prompt's rules: quoted labels, Unicode not LaTeX). The repair path is tested with fakes.
 - **Is the judge just lenient?** Zero removals needed checking. Six planted items on chapter 5: the real question and card (supported), the same question with a wrong answer marked, a true fact the lecture never mentions (Cauchy, 1847), a card contradicting the lecture, and a question with two correct options. Haiku got all six right, the last as `ambiguous`, for $0.001. M7 turns this into a proper eval.
+
+## M5: the summary video
+
+- **What:** three stages (`script`, `narrate`, `video`). Opus writes and picks frames, ElevenLabs speaks in the configured voice, and Engram draws every frame itself.
+- **Measured on CS229:** script 42 s (2 Opus calls, see below), narration 3 s for 1,040 characters, both videos 112 s. The result is 79 s long: 7 scenes, 183 words, 30 MB for the two files.
+
+## Opus writes from the course, not the timeline
+
+- **What:** the script prompt gets the course outline (chapters, headings, key terms) and the frames the course already uses, about 8 KB, instead of the 97 KB timeline.
+- **Why:** the course is the lecture already distilled and checked, so the summary can't drift from it. It's also a small, fast call (26 s). Opus opened 12 thumbnails to choose its frames.
+
+## Code enforces the length, because the prompt didn't
+
+- **What:** the script is counted. Over 200 words, Opus gets one "shorten this, cut words not ideas" call.
+- **Why:** asked for 170-210 words, Opus wrote 246 (a 108 s video). Asked for 150-190, it wrote over 200 again. The shortening pass got 183. The voice reads about 2.4 words a second, so 200 words is about 85 s.
+
+## Frames drawn in Python, not ffmpeg filters
+
+- **What:** each output frame is composed with OpenCV and Pillow and piped raw to ffmpeg, which only encodes.
+- **Alternatives:** `zoompan` (rounds to whole pixels, so slow moves judder, and it can't crossfade between shots by itself), `xfade` chains and an ASS subtitle file (workable, but captions styled by libass can't match the web app's pills and type, and word-by-word highlighting means one event per word).
+- **Cost:** 11-21 ms per frame on this machine. A 79 s video in both shapes takes about two minutes.
+
+## Ken Burns towards the ink, slides shown whole
+
+- **Focus:** the move ends on the centre of mass of the board's ink (black-hat and top-hat, as in M2), so it drifts towards the writing, not the lecturer.
+- **Bars:** some CS229 frames are 4:3 slides inside a 16:9 recording. Zooming showed the black bars. Bars are now trimmed, and a trimmed slide whose shape doesn't fit the space is shown whole on the page colour.
+- **Two bugs on the way:** the "Stanford" watermark overlaps the right-hand bar, so "a column is a bar if its brightest pixel is dark" kept that bar. A column now counts as content only if more than 8% of it is lit. And fitting (rather than cropping) was first applied to every frame whose shape differed, which put page-coloured bars around 16:9 boards in the portrait's 4:3 card. Only letterboxed slides are fitted now. All three trimmed frames out of 120 are real slides.
+- **No AI upscaling:** 720p frames are scaled to 1080p with bicubic interpolation, which invents nothing on the board.
+
+## Captions by sentence, then balanced
+
+- **What:** words are split at sentence ends and pauses over 0.35 s first. A long sentence is then cut into the fewest pieces that fit, of even length.
+- **Why:** greedy line-filling put the end of one sentence with the start of the next ("regression. The hypothesis is…") and left single orphaned words. The same chunks are written as WebVTT for the web player.
+
+## Inter for Apple's SF
+
+- **What:** Inter 4.0 (SIL Open Font Licence) is bundled in `engram/render/fonts`.
+- **Why:** the web app uses the system font stack, which is SF on Apple devices, but the server has no SF and its licence forbids bundling it. Inter was designed for the same job and is the usual open stand-in.
+
+## Tests render thumbnails
+
+- **What:** an autouse fixture makes the pipeline tests render 320×180 and 180×226 at 10 fps. One test renders real-size frames and checks the layout (caption pill, rounded card corners, page colour around slides).
+- **Why:** every pipeline test now ends in a video. At full size that would add minutes to the suite; at thumbnail size it's the same code for 1% of the pixels.

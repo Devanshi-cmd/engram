@@ -2,7 +2,7 @@
 
 *An engram is the physical trace a memory leaves in the brain. Engram leaves one for every lecture.*
 
-**Upload a lecture video and get a course back:** chaptered notes, diagrams, flashcards, a quiz and a 90-second narrated summary video. Every item links to the moment in the lecture it came from.
+**Upload a lecture video and get a course back:** chaptered notes, diagrams, flashcards, a quiz and a narrated summary video of about 80 seconds. Every item links to the moment in the lecture it came from.
 
 Engram listens to the talk, reads the slides and the whiteboard from the video frames (handwriting included), and lines the two up in time. The words spoken while a frame was on screen help it read that frame, and every note can cite exactly where it came from.
 

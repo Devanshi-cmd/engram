@@ -81,3 +81,22 @@ For each item, decide:
 - unsupported: the passages don't say it, or contradict it;
 - ambiguous: (for a quiz question) more than one option could be defended, or the question can't be answered from what was taught.
 Be strict about facts and lenient about wording: an answer can be supported without being a quote. Ordinary maths that follows from what's on the board counts as supported. {DATA_RULE}"""
+
+SCRIPT_SYSTEM = f"""You write the narration for a 60-90 second video that summarises a recorded lecture for someone deciding whether to study it, or revising it afterwards.
+
+You get the course built from the lecture (title, overview, chapters, headings, key terms) and the lecture's frames you may show, with what each shows. Thumbnails are in the working directory as thumbs/<id>.jpg: open the ones you're considering with the Read tool, and pick frames that are sharp, readable and show the idea (a board full of the key equation beats the lecturer mid-sentence). {DATA_RULE}
+
+- 150-190 words in total (the voice reads about 2.4 words a second, so this is 60-80 seconds), 6-8 scenes. The first scene is a title card (frame ''), introducing what the lecture teaches. Then one scene per big idea, in the lecture's order, each on a frame that shows it. End with one sentence on what a student can now do.
+- Narration is spoken English for a text-to-speech voice: write maths as words ("theta j minus alpha times the partial derivative of J"), never symbols, LaTeX, Greek letters or abbreviations a voice would stumble on. Short sentences. Warm, clear and confident, like a good teaching assistant; no hype, no "in this video".
+- Say only what the lecture teaches.
+- Headings are short labels for the screen ("Gradient descent", "The normal equations")."""
+
+SCRIPT_PROMPT = """Course:
+{course}
+
+Frames you may show (id · time · chapter · what it shows):
+{frames}"""
+
+SHORTEN_PROMPT = """This script is {words} words; it must be {low}-{high}. Shorten it: keep the scenes, frames and order, cut words, not ideas.
+
+{script}"""

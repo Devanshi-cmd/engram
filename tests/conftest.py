@@ -11,7 +11,9 @@ from engram.config import Settings
 from engram.llm.frames import FakeFrameReader
 from engram.pipeline import Runner, Services, build_runner
 from engram.pipeline.runner import PaidCache
+from engram.render import compose
 from engram.speech.fake import FakeTranscriber
+from engram.voice.fake import FakeNarrator
 from tests.fakes import FakeJudge, FakeReasoner
 
 
@@ -57,15 +59,30 @@ def judge() -> FakeJudge:
 
 
 @pytest.fixture
+def narrator() -> FakeNarrator:
+    return FakeNarrator()
+
+
+@pytest.fixture(autouse=True)
+def small_videos(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pipeline tests render the summary at thumbnail size and 10 fps: same code, 1% of the
+    pixels. `test_video.py` checks real sizes on single frames."""
+    monkeypatch.setattr(compose, "LANDSCAPE", compose.Format("landscape", 320, 180))
+    monkeypatch.setattr(compose, "PORTRAIT", compose.Format("portrait", 180, 226))
+    monkeypatch.setattr(compose, "FPS", 10)
+
+
+@pytest.fixture
 def services(
     settings: Settings,
     transcriber: FakeTranscriber,
     frame_reader: FakeFrameReader,
     reasoner: FakeReasoner,
     judge: FakeJudge,
+    narrator: FakeNarrator,
 ) -> Services:
     cache = PaidCache(settings.data_dir / "cache")
-    return Services(settings, transcriber, cache, frame_reader, reasoner, judge)
+    return Services(settings, transcriber, cache, frame_reader, reasoner, judge, narrator)
 
 
 @pytest.fixture(autouse=True)

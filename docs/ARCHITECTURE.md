@@ -35,6 +35,15 @@ engram/
     mermaid.py      Mermaid's own parser in Node (tools/mermaid), the version the page uses
     grounding.py    Source passages per card and question, and the Haiku verdicts
     assemble.py     course.json and the Markdown export
+    script.py       The summary script: Opus picks the story and frames; code keeps it speakable
+  voice/
+    elevenlabs.py   ElevenLabs TTS with character timings → word timings
+    fake.py         A quiet tone, three words a second, for tests
+  render/
+    design.py       Title cards, heading chips, caption lines (Pillow, Inter, DevSwarm colours)
+    captions.py     Word timings → caption chunks, and WebVTT
+    compose.py      Shots, Ken Burns, crossfades, captions → ffmpeg, landscape and portrait
+    fonts/          Inter 4.0 (SIL Open Font Licence)
   vision/similar.py Perceptual hash: the same slide shown twice is read once
   pipeline/
     store.py        SQLite: jobs, stages, progress events
@@ -62,6 +71,9 @@ engram/
 | `write` | timeline, chapters | `content.json` | Opus per chapter, 4 at a time: notes, key terms, diagrams, cards, quiz. Opens frames itself |
 | `check` | content, transcript, readings | `grounding.json` | Haiku checks every card and question against the source passages |
 | `course` | all of the above | `course.json`, `course.md`, `thumbs/` | Anchors → timestamps; unsupported items removed and recorded |
+| `script` | course, readings | `script.json` | Opus: 6-8 scenes, 150-190 words, each on a frame it picked from the thumbnails |
+| `narrate` | script | `narration.mp3`, `narration.json` | ElevenLabs, the configured voice, with the time of every word. Cached by text + voice |
+| `video` | script, narration, frames | `summary.mp4`, `summary-portrait.mp4`, `summary.jpg`, `summary.vtt` | 1920×1080 and 1080×1350, 30 fps, H.264 + AAC, rendered in parallel |
 
 ```mermaid
 flowchart LR
@@ -70,6 +82,7 @@ flowchart LR
   L --> R[read_frames] --> TL[timeline]
   T --> TL
   TL --> C[chapters] --> W[write] --> G[check] --> CO[course]
+  CO --> SC[script] --> NA[narrate] --> VI[video]
 ```
 
 ## Keyframes
@@ -169,3 +182,12 @@ Four stages turn the timeline into a course. Opus does the thinking; code does e
 5. **Assemble.** Every anchor becomes a time: a quote is matched to the word where it starts (letter trigrams over 60-word windows, ties to the earliest match, the item's own chapter first). A frame anchor uses that frame's time on screen within the chapter. An item that can't be placed gets no time and is listed under `unplaced`.
 
 Every Opus and Haiku answer is cached by its exact prompt, so re-running a job, or a stage whose inputs didn't change in substance, asks nothing again. The prompt goes to `claude -p` on stdin, because a timeline is bigger than the 128 KB a single command-line argument may be.
+
+## The summary video (M5)
+
+1. **Script.** Opus reads the finished course (not the timeline: the course is already the distilled lecture) and the frames the course uses, with Haiku's description of each. It opens thumbnails (480 px, cheap) to pick frames that are sharp and show the idea. It writes 6-8 scenes: a title card, one scene per big idea, and a closing line. Code then makes it speakable (symbols and subscripts to words: `θⱼ := θⱼ − α` → "theta j becomes theta j minus alpha"), turns unknown frame ids into title cards, and if it's over 200 words, asks once for a shorter version.
+2. **Narrate.** One ElevenLabs call for the whole script (one take sounds more natural than stitched scenes), `eleven_multilingual_v2`, with character timings, which become word timings. The recording is cached by text and voice: re-rendering never pays twice.
+3. **Video.** Each scene starts when its first word is spoken. Frames get a slow move (10% zoom) towards the writing: the centre of mass of the board's ink. Slides recorded with black bars are trimmed and shown whole on the page colour. Shots crossfade over 0.45 s. Captions are split by sentence, then into even pieces, and fill in word by word. A 2.8 s end card closes it.
+   - **Landscape:** the frame fills the screen, the heading sits in a frosted pill, captions in a dark pill.
+   - **Portrait (LinkedIn, 4:5):** heading above, the frame in a rounded 4:3 card with DevSwarm's shadow, captions in ink below.
+   - Frames are drawn in Python (OpenCV for the moves, Pillow for text) and piped raw to ffmpeg (x264 CRF 20, AAC 160k, faststart). About 11 ms per landscape frame and 21 ms per portrait frame before encoding; both render in parallel.

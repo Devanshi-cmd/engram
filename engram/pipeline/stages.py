@@ -14,19 +14,24 @@ from engram.course.chapters import Chapter, plan_chapters, split_timeline
 from engram.course.generate import check_diagrams, write_chapter
 from engram.course.grounding import Item, Sources, card_item, ground, quiz_item
 from engram.course.prompts import PROMPT_VERSION
-from engram.course.schemas import ChapterContent, ItemVerdict
-from engram.errors import MediaError, ProviderError
+from engram.course.schemas import ChapterContent, ItemVerdict, SummaryScript
+from engram.course.script import words as script_words
+from engram.course.script import write_script
+from engram.errors import EngramError, MediaError, ProviderError
 from engram.llm.frames import ClaudeCodeFrameReader, FrameContext, FrameReader, FrameReading, Read
 from engram.llm.judge import Judge
 from engram.media import MediaInfo, extract_audio, probe
 from engram.pipeline.hashing import file_sha256, key_of
 from engram.pipeline.runner import PaidCache, Stage, StageContext
 from engram.pipeline.thinking import Thinker
+from engram.render import compose
+from engram.render.captions import webvtt
 from engram.speech import Transcript, to_segments
 from engram.timeline import Anchors, Span, align_words
 from engram.timeline.compact import build_flags, build_timeline, clock
 from engram.vision.keyframes import extract_frame, find_keyframes
 from engram.vision.similar import dhash, group_same
+from engram.voice.models import Narration
 
 
 def _probe(ctx: StageContext) -> str:
@@ -406,6 +411,72 @@ def _thumbnail(source: Any, target: Any) -> None:
     cv2.imwrite(str(target), image, [cv2.IMWRITE_JPEG_QUALITY, 80])
 
 
+# --- The narrated summary ----------------------------------------------------------------
+
+
+def _script(ctx: StageContext) -> str:
+    course = ctx.read_json("course.json")
+    readings = ctx.read_json("readings.json")["frames"]
+    thinker = _thinker(ctx)
+    ctx.progress("Opus is writing the narration")
+    script = write_script(thinker, course, readings)
+    if len(script.scenes) < 2:
+        raise ProviderError("Opus wrote a summary script with fewer than two scenes.")
+    ctx.write_json("script.json", {**script.model_dump(), "reasoning": thinker.report()})
+    return f"{len(script.scenes)} scenes · {script_words(script)} words · {_usage(thinker)}"
+
+
+def _load_script(ctx: StageContext) -> SummaryScript:
+    raw = ctx.read_json("script.json")
+    return SummaryScript.model_validate({k: v for k, v in raw.items() if k != "reasoning"})
+
+
+def _narrate(ctx: StageContext) -> str:
+    narrator = ctx.services.narrator
+    if narrator is None:
+        raise EngramError("No narrator voice: set ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID.")
+    text = " ".join(s.narration for s in _load_script(ctx).scenes)
+    key = key_of({"by": narrator.name, "text": text})
+    saved = ctx.services.cache.get("narrations", key)
+    audio_cache = ctx.services.cache.root / "narrations" / f"{key}.mp3"
+    if saved is not None and audio_cache.exists():
+        narration = Narration.model_validate(saved)
+        audio = audio_cache.read_bytes()
+        reused = " · reused"
+    else:
+        ctx.progress(f"Recording {len(text):,} characters with {narrator.name}")
+        audio, narration = narrator.speak(text)
+        audio_cache.parent.mkdir(parents=True, exist_ok=True)
+        audio_cache.write_bytes(audio)
+        ctx.services.cache.put("narrations", key, narration.model_dump())
+        reused = ""
+    ctx.path("narration.mp3").write_bytes(audio)
+    ctx.write_json("narration.json", narration.model_dump())
+    words = len(narration.words)
+    return f"{narration.duration:.1f} s · {words} words · {len(text):,} characters{reused}"
+
+
+def _video(ctx: StageContext) -> str:
+    script = _load_script(ctx)
+    narration = Narration.model_validate(ctx.read_json("narration.json"))
+    shots, total = compose.plan_shots(script, narration, ctx.path("frames"))
+    formats = [compose.LANDSCAPE, compose.PORTRAIT]
+    ctx.progress(f"Rendering {total:.0f} s in landscape and portrait")
+
+    def one(fmt: compose.Format) -> None:
+        name = "summary.mp4" if fmt is compose.LANDSCAPE else "summary-portrait.mp4"
+        compose.render(fmt, script, shots, narration, ctx.path("narration.mp3"), total,
+                       ctx.path(name))  # fmt: skip
+
+    with ThreadPoolExecutor(len(formats)) as pool:
+        list(pool.map(one, formats))
+    compose.poster(compose.LANDSCAPE, script, shots, narration, ctx.path("summary.jpg"))
+    chunks = compose.Renderer(compose.LANDSCAPE, script, shots, narration).chunks
+    ctx.path("summary.vtt").write_text(webvtt(chunks))
+    size = sum(ctx.path(n).stat().st_size for n in ("summary.mp4", "summary-portrait.mp4"))
+    return f"{total:.0f} s · {len(shots)} shots · 1920×1080 and 1080×1350 · {size / 1e6:.1f} MB"
+
+
 def _clock(seconds: float) -> str:
     s = int(round(seconds))
     h, m, s = s // 3600, s % 3600 // 60, s % 60
@@ -492,5 +563,30 @@ STAGES: list[Stage] = [
         _course,
         deps=("probe", "transcribe", "align", "read_frames", "chapters", "write", "check"),
         outputs=("course.json", "course.md", "thumbs"),
+    ),
+    Stage(
+        "script",
+        "Writing the summary narration",
+        _script,
+        deps=("read_frames", "course"),
+        outputs=("script.json",),
+        version=2,  # v2: 150-190 words, one shortening pass past 200
+        params=lambda s: {"by": s.get_reasoner().name, "prompts": PROMPT_VERSION},
+    ),
+    Stage(
+        "narrate",
+        "Recording the narration",
+        _narrate,
+        deps=("script",),
+        outputs=("narration.mp3", "narration.json"),
+        params=lambda s: {"by": s.narrator.name if s.narrator else None},
+    ),
+    Stage(
+        "video",
+        "Rendering the summary video",
+        _video,
+        deps=("keyframes", "script", "narrate"),
+        outputs=("summary.mp4", "summary-portrait.mp4", "summary.jpg", "summary.vtt"),
+        version=3,  # v3: letterboxed slides shown whole; captions split by sentence
     ),
 ]
