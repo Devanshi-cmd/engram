@@ -98,7 +98,7 @@
       });
       html.push('<p class="transcript-para' + (p.who ? " is-student" : "") + '"><button type="button" class="transcript-time num" data-t="' + p.t + '">' + clock(p.t) + "</button>" + (p.who ? '<span class="transcript-who">Student</span>' : "") + words.join(" ") + "</p>");
     });
-    box.innerHTML = html.join("");
+    box.innerHTML = html.join("") || '<p class="muted">No speech was recognised in this lecture.</p>';
     transcript.spans = $$("[data-w]", box);
   }
   function escapeHtml(text) {

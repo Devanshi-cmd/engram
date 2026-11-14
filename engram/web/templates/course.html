@@ -122,6 +122,7 @@
       </section>
 
       <section class="tab-panel" id="cards" role="tabpanel" aria-labelledby="tab-cards" hidden>
+        {% if not c.counts.cards %}<p class="card empty muted">This lecture has no flashcards.</p>{% else %}
         <div class="deck card">
           <div class="deck-toolbar">
             <label class="deck-filter-label"><span class="sr-only">Chapter</span>
@@ -150,9 +151,11 @@
             <button type="button" class="deck-restart button-secondary">Go through them again</button>
           </div>
         </div>
+        {% endif %}
       </section>
 
       <section class="tab-panel" id="quiz" role="tabpanel" aria-labelledby="tab-quiz" hidden>
+        {% if not c.counts.questions %}<p class="card empty muted">This lecture has no quiz questions.</p>{% else %}
         <div class="quiz">
           <p class="quiz-score card" aria-live="polite">{{ c.counts.questions }} questions, each checked against the lecture. Pick an answer to see if you're right.</p>
           {% for ch in c.chapters %}{% if ch.quiz %}
@@ -172,6 +175,7 @@
           {% endfor %}
           {% endif %}{% endfor %}
         </div>
+        {% endif %}
       </section>
 
       {% if c.summary_video %}

@@ -62,6 +62,17 @@ def worker() -> None:
     run_queue(runner, stop=lambda: stopping)
 
 
+@app.command(name="eval")
+def eval_(
+    only: str = typer.Option("", help="Run one part: handwriting, states or grounding."),
+) -> None:
+    """Measure quality against the hand-made answer keys in evals/; writes evals/report.md."""
+    from engram.config import ROOT, load_settings
+    from engram.evals import run
+
+    typer.echo(run(load_settings(), ROOT, only, typer.echo))
+
+
 @app.command(name="list")
 def list_course(
     job_id: str = typer.Argument(..., help="The job to show or hide."),

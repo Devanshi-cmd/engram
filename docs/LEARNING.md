@@ -264,3 +264,23 @@ Smaller lessons along the way:
 
 - **What:** a course page is reachable by its link (a random 12-character id). Only courses marked with `engram list` appear on the home page.
 - **Why:** an uploader's lecture isn't the operator's to publish, and lectures like CS229 aren't openly licensed. The sample gallery (M8) will list only lectures with a licence that allows it.
+
+## M7: answer keys made by a person, not a model
+
+- **What:** the handwriting and board-state evals score Engram against labels Devanshi made by hand, in a private labelling page (a claude.ai artifact with its own small database), then exported to `evals/labels/`. Engram's own readings were hidden on that page, so they couldn't anchor the answers.
+- **Why:** labels drafted by a Claude model would share the blind spots of the Claude models being measured. The grounding eval needs no labels: it plants faults in real items.
+
+## The grounding eval found a real weakness
+
+- **Method:** every real flashcard and quiz question from the CS229 and MIT 18.06 courses is judged as it is (it should stay), and again with a planted fault: the wrong answer marked, or a card's answer swapped with the next card's in the same chapter.
+- **First run:** all 86 real items kept, all 30 wrong answers removed, but 4 of 56 swapped answers got through. A swap with another chapter's answer was too easy (0 of 56 got through), so the eval swaps within a chapter: a near miss on the same topic.
+- **What got through:** true statements from the lecture that don't answer the card's question ("Why is h(x) affine?" answered with a true fact about x₀). The judge checked whether the answer was true, not whether it answered the question.
+- **Fix:** the judge's rules now say an answer must answer the question asked. Re-run: 86 of 86 kept, 30 of 30 wrong answers and 55 of 56 swaps removed. The one left is defensible (the swapped-in update rule contains the asked-for derivative).
+- **Limits:** planted faults are easier to spot than the subtle mistakes a model makes, and the judge is also Claude. These numbers bound how lenient it is, not how often Opus is wrong.
+
+## Hardening
+
+- **A busy server says so:** with 5 lectures already queued, an upload is refused ("Engram is busy, try again in an hour") rather than left waiting for hours. Under 4 GB of free disk, uploads pause.
+- **A course link before the course exists** goes to the job's progress page instead of a 404.
+- **Empty states:** a lecture with no flashcards, no quiz questions, no diagrams or no recognised speech says so instead of showing an empty widget.
+- **Retrying:** a failed job's page says to upload the same video again; finished steps are not repeated.

@@ -6,7 +6,7 @@
       {% if job.status == "queued" %}{% if ahead %}{{ ahead }} lecture{% if ahead > 1 %}s are{% else %} is{% endif %} ahead of it. {% endif %}This page updates by itself, and you can close it: the work goes on.
       {% elif job.status == "running" %}A one-hour lecture takes about ten minutes. This page updates by itself, and you can close it: the work goes on.
       {% elif job.status == "done" %}Every note, card and question links to the moment in the lecture it came from.
-      {% else %}Part of the work finished. What failed is marked below.{% endif %}
+      {% else %}Part of the work finished, and what failed is marked below. To try again, upload the same video: the finished steps aren't repeated.{% endif %}
     </p>
     {% if ready %}<div class="run-hero-actions"><a class="button" href="/courses/{{ job.id }}">Open the course</a></div>{% endif %}
     <p class="run-hero-meta">{{ status_pill(job.status) }}<span class="mono">job {{ job.id }}</span></p>

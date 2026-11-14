@@ -66,6 +66,8 @@ OUTPUTS = [
 
 VIDEO_TYPES = {".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi"}
 MAX_UPLOAD_BYTES = 2 * 1024**3
+MAX_QUEUED = 5  # more waiting than this and a new upload is turned away, not left for hours
+MIN_FREE_BYTES = 4 * 1024**3  # an upload, its web copy and its frames need room
 
 
 def create_app(
@@ -135,6 +137,12 @@ def create_app(
         if not any(hmac.compare_digest(access_code.encode(), c.encode())
                    for c in settings.access_codes):  # fmt: skip
             return home_page(request, error="That access code isn't valid.", status=403)
+        if sum(1 for j in store.jobs() if j.status == "queued") >= MAX_QUEUED:
+            return home_page(request, error="Engram is busy with other lectures. Try again in "
+                             "an hour.", status=503)  # fmt: skip
+        if shutil.disk_usage(settings.data_dir).free < MIN_FREE_BYTES:
+            return home_page(request, error="The server is short of disk space, so uploads "
+                             "are paused for now.", status=507)  # fmt: skip
         suffix = Path(video.filename or "").suffix.lower()
         if suffix not in VIDEO_TYPES:
             return home_page(request, error="Upload a video file: MP4, MOV, MKV or WebM.",
@@ -218,6 +226,9 @@ def create_app(
 
     @app.get("/courses/{job_id}", response_class=HTMLResponse)
     def course_page(request: Request, job_id: str) -> Response:
+        find_job(job_id)
+        if course_view.load(jobs_root / job_id) is None:  # not built yet: show its progress
+            return RedirectResponse(f"/jobs/{job_id}", status_code=303)
         files = course_files(job_id)
         return templates.TemplateResponse(
             request, "course.html", {"c": course_view.view(files, job_id), "outputs": OUTPUTS}

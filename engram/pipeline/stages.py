@@ -581,6 +581,7 @@ STAGES: list[Stage] = [
         _check,
         deps=("transcribe", "align", "read_frames", "chapters", "write"),
         outputs=("grounding.json",),
+        version=2,  # v2: an answer must answer its own question (evals: 4 of 56 swaps got through)
         params=lambda s: {"by": s.get_judge().name, "prompts": PROMPT_VERSION},
     ),
     Stage(

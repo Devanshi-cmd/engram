@@ -228,3 +228,26 @@ def test_a_job_folder_survives_a_missing_source(finished: str, settings: Setting
     c = web(settings)
     assert c.get(f"/courses/{finished}").status_code == 200  # the course still reads
     assert c.get(f"/courses/{finished}/video").status_code == 404
+
+
+def test_a_course_link_for_an_unfinished_job_shows_its_progress(
+    runner: Runner, settings: Settings, lecture_video: Path
+) -> None:
+    job, _ = start_job(runner, lecture_video)
+    r = web(settings).get(f"/courses/{job.id}", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/jobs/{job.id}"
+
+
+def test_a_full_queue_turns_uploads_away(
+    runner: Runner, settings: Settings, lecture_video: Path, tmp_path: Path
+) -> None:
+    from engram.web.app import MAX_QUEUED
+
+    for i in range(MAX_QUEUED):
+        copy = tmp_path / f"v{i}.mp4"
+        copy.write_bytes(lecture_video.read_bytes() + bytes([i]))  # different bytes, new job
+        start_job(runner, copy)
+    with lecture_video.open("rb") as f:
+        r = web(settings).post("/jobs", data={"access_code": "let-me-in"},
+                               files={"video": ("a.mp4", f)})  # fmt: skip
+    assert r.status_code == 503 and "busy" in r.text

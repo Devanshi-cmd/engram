@@ -1,0 +1,15 @@
+{
+  "_about": "Lectures the evals use. Videos live in .data/samples/ (not committed: CS229 is not openly licensed). Labels are in evals/labels/, made by hand in the labelling page.",
+  "cs229": {
+    "title": "Stanford CS229, lecture 2 (Andrew Ng), the first 20 minutes for board states",
+    "video": ".data/samples/cs229-lecture2.mp4",
+    "states_until": 1200,
+    "course_job": "f93f51e9482d"
+  },
+  "mit1806": {
+    "title": "MIT 18.06, lecture 1 (Gilbert Strang), CC BY-NC-SA, the first 6 minutes",
+    "video": ".data/samples/mit1806-lecture1-6min.mp4",
+    "states_until": 360,
+    "course_job": "83547734b6c5"
+  }
+}

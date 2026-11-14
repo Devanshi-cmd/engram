@@ -1,0 +1,29 @@
+{
+ "handwriting": [],
+ "states": [],
+ "grounding": [
+  {
+   "kind": "original",
+   "items": 86,
+   "kept": 86,
+   "kept_ids": [],
+   "kept_rate": 1.0
+  },
+  {
+   "kind": "wrong answer",
+   "items": 30,
+   "kept": 0,
+   "kept_ids": [],
+   "kept_rate": 0.0
+  },
+  {
+   "kind": "swapped answer",
+   "items": 56,
+   "kept": 1,
+   "kept_ids": [
+    "cs229:c5-card6-swap"
+   ],
+   "kept_rate": 0.017857142857142856
+  }
+ ]
+}

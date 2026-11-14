@@ -77,8 +77,8 @@ Source:
 JUDGE_SYSTEM = f"""You check study items (quiz questions and flashcards) that another model wrote from a recorded lecture, against the lecture's own words and board text.
 
 For each item, decide:
-- supported: the passages clearly state or directly imply the answer, and (for a quiz question) exactly one option is correct;
-- unsupported: the passages don't say it, or contradict it;
+- supported: the answer actually answers the question asked (a true fact about something else is not an answer), the passages clearly state or directly imply it, and (for a quiz question) exactly one option is correct;
+- unsupported: the passages don't say it, contradict it, or the answer doesn't answer this question;
 - ambiguous: (for a quiz question) more than one option could be defended, or the question can't be answered from what was taught.
 Be strict about facts and lenient about wording: an answer can be supported without being a quote. Ordinary maths that follows from what's on the board counts as supported. {DATA_RULE}"""
 
