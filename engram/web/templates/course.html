@@ -186,8 +186,8 @@
           </video>
           <p class="muted">A narrated recap of the lecture, written from the course and read by an AI voice.</p>
           <div class="run-hero-actions">
-            <a class="button-secondary button" href="/courses/{{ c.id }}/files/summary.mp4" download>{{ icon("download") }}Landscape, 1920×1080</a>
-            {% if c.portrait_video %}<a class="button-secondary button" href="/courses/{{ c.id }}/files/summary-portrait.mp4" download>{{ icon("download") }}Portrait for LinkedIn, 1080×1350</a>{% endif %}
+            <a class="button-secondary button" href="/courses/{{ c.id }}/files/summary.mp4?download=1" download>{{ icon("download") }}Landscape, 1920×1080</a>
+            {% if c.portrait_video %}<a class="button-secondary button" href="/courses/{{ c.id }}/files/summary-portrait.mp4?download=1" download>{{ icon("download") }}Portrait for LinkedIn, 1080×1350</a>{% endif %}
           </div>
         </div>
       </section>

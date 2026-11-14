@@ -56,6 +56,7 @@ engram/
     app.py          Routes: upload, job page, course page, media, transcript, downloads
     course.py       The course page's data: Markdown + maths, shuffled quiz, transcript
     exports.py      Markdown zip and Anki file
+  storage.py        Cloudflare R2 (S3 API): signed upload and playback links, put/get/delete
     templates/      Jinja: home, job (live), course, print
     static/         theme.css (DevSwarm, unchanged), engram.css, course.js, vendor/
 ```
@@ -142,7 +143,8 @@ SQLite in WAL mode at `.data/engram.sqlite3`. Every call opens a short-lived con
 
 - **Server-rendered.** FastAPI renders Jinja templates. The job page refreshes itself with HTMX every 2 s, and the course page has one plain script (`static/course.js`). No frontend build step.
 - **The web app never processes a lecture.** An upload is saved to `.data/uploads/`, checked with ffprobe (a video, within the length limit), and recorded as a queued job. `engram worker`, a separate process, runs queued jobs oldest first, one at a time. Restarting the site never interrupts a lecture, and a stopped worker's job is queued again on start-up and resumes from its last finished stage.
-- **Uploads need an access code** (`ENGRAM_ACCESS_CODES`, compared in constant time) and `engram serve --uploads`. Uploading the same bytes again reuses the existing job.
+- **The access code is checked before any video is sent.** The page asks `POST /uploads` with the code, the file's name and size; only a valid code gets a one-time upload slot (an hour). With R2 the slot is a signed PUT URL, with the size part of the signature, and the browser sends the file straight to the bucket; without R2 it's `PUT /uploads/<id>/file` on this server, streamed to disk and cut off at the declared size. `POST /uploads/<id>/done` checks the file arrived whole and queues the job. Codes are compared in constant time, and 10 wrong ones from an address in 10 minutes block it for the rest of that window. Uploading the same bytes again reuses the existing job.
+- **Big files in R2** (`engram/storage.py`): uploads, web copies and summary videos. The worker downloads a lecture to `.data/work/` while running it and deletes it afterwards; a job's stages write `playback.json` and `summary.json`, which say whether each file is on disk or which R2 key holds it. Pages play R2 files through 6-hour signed links (the bucket stays private), and the Content-Security-Policy then allows the bucket's origin for media and uploads.
 - **Courses are unlisted by default.** A course page lives at `/courses/<job id>`. Only courses marked with `engram list <job>` appear on the home page.
 - **Files are served from an allowlist** (`frames/f0000.jpg`, `thumbs/…`, `summary*.mp4`, `summary.jpg`, `summary.vtt`), matched by a regular expression, never by joining paths. Transcripts, readings, logs and the database stay private. Video is served with HTTP range requests, so seeking works.
 - **Security headers on every response.** The Content-Security-Policy allows scripts only from the app itself (KaTeX and Mermaid are vendored in `static/vendor/`, no CDN), so text read off a slide can never run as code. Styles may be inline, because KaTeX and Mermaid position maths and diagrams with style attributes.

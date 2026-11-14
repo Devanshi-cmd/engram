@@ -32,6 +32,16 @@ class Settings:
     anthropic_api_key: str | None = None
     access_codes: frozenset[str] = field(default_factory=frozenset)
     max_minutes: int = 120
+    r2_account_id: str | None = None
+    r2_access_key_id: str | None = None
+    r2_secret_access_key: str | None = None
+    r2_bucket: str | None = None
+
+    @property
+    def r2_enabled(self) -> bool:
+        """Big files go to Cloudflare R2 when all four R2 values are set."""
+        return all((self.r2_account_id, self.r2_access_key_id, self.r2_secret_access_key,
+                    self.r2_bucket))  # fmt: skip
 
     @property
     def uploads_enabled(self) -> bool:
@@ -49,4 +59,8 @@ def load_settings(env_file: Path | None = ROOT / ".env") -> Settings:
         anthropic_api_key=_env("ANTHROPIC_API_KEY"),
         access_codes=frozenset(c.strip() for c in codes.split(",") if c.strip()),
         max_minutes=int(os.environ.get("ENGRAM_MAX_MINUTES", "120")),
+        r2_account_id=_env("R2_ACCOUNT_ID"),
+        r2_access_key_id=_env("R2_ACCESS_KEY_ID"),
+        r2_secret_access_key=_env("R2_SECRET_ACCESS_KEY"),
+        r2_bucket=_env("R2_BUCKET"),
     )

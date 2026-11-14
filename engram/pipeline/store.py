@@ -53,7 +53,19 @@ CREATE TABLE IF NOT EXISTS events (
   message TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_by_job ON events(job_id, id);
+CREATE TABLE IF NOT EXISTS uploads (
+  id TEXT PRIMARY KEY,
+  key TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  title TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  content_type TEXT NOT NULL,
+  created_at REAL NOT NULL,
+  job_id TEXT
+);
 """
+
+UPLOAD_SECONDS = 3600  # an upload link is good for an hour
 
 
 @dataclass(frozen=True)
@@ -66,6 +78,19 @@ class Job:
     error: str | None
     created_at: float
     listed: bool = False  # shown in the home page's sample courses
+    source_key: str | None = None  # the upload's key in R2; source_path is then a local cache
+
+
+@dataclass(frozen=True)
+class Upload:
+    id: str
+    key: str
+    filename: str
+    title: str
+    size: int
+    content_type: str
+    created_at: float
+    job_id: str | None
 
 
 @dataclass(frozen=True)
@@ -99,6 +124,8 @@ class Store:
             columns = {r["name"] for r in db.execute("PRAGMA table_info(jobs)")}
             if "listed" not in columns:  # added in M6
                 db.execute("ALTER TABLE jobs ADD COLUMN listed INTEGER NOT NULL DEFAULT 0")
+            if "source_key" not in columns:  # added with R2 storage
+                db.execute("ALTER TABLE jobs ADD COLUMN source_key TEXT")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -111,16 +138,46 @@ class Store:
             db.close()
 
     # ---- jobs ------------------------------------------------------------
-    def create_job(self, title: str, source_path: Path, source_sha: str) -> Job:
+    def create_job(
+        self, title: str, source_path: Path, source_sha: str, source_key: str | None = None
+    ) -> Job:
         now = time.time()
         job_id = uuid.uuid4().hex[:12]
         with self._connect() as db:
             db.execute(
                 "INSERT INTO jobs (id, title, source_path, source_sha, status, error, created_at,"
-                " updated_at) VALUES (?, ?, ?, ?, 'queued', NULL, ?, ?)",
-                (job_id, title, str(source_path), source_sha, now, now),
+                " updated_at, source_key) VALUES (?, ?, ?, ?, 'queued', NULL, ?, ?, ?)",
+                (job_id, title, str(source_path), source_sha, now, now, source_key),
             )
         return self.job(job_id)
+
+    # ---- uploads: an access code buys a one-time upload slot ----------------
+    def create_upload(
+        self, key: str, filename: str, title: str, size: int, content_type: str
+    ) -> Upload:
+        upload_id = uuid.uuid4().hex
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO uploads VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+                (upload_id, key.format(id=upload_id), filename, title, size, content_type,
+                 time.time()),
+            )  # fmt: skip
+        found = self.upload(upload_id)
+        assert found is not None
+        return found
+
+    def upload(self, upload_id: str) -> Upload | None:
+        """A pending, unexpired upload, or None."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM uploads WHERE id = ? AND created_at > ?",
+                (upload_id, time.time() - UPLOAD_SECONDS),
+            ).fetchone()
+        return Upload(**dict(row)) if row else None
+
+    def finish_upload(self, upload_id: str, job_id: str) -> None:
+        with self._connect() as db:
+            db.execute("UPDATE uploads SET job_id = ? WHERE id = ?", (job_id, upload_id))
 
     def job(self, job_id: str) -> Job:
         with self._connect() as db:
@@ -222,6 +279,7 @@ def _job(row: sqlite3.Row) -> Job:
         error=row["error"],
         created_at=row["created_at"],
         listed=bool(row["listed"]),
+        source_key=row["source_key"],
     )
 
 

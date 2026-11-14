@@ -7,15 +7,15 @@ worker (`engram worker`) runs it. So restarting the site never interrupts a lect
 from __future__ import annotations
 
 import hmac
+import re
 import shutil
 import time
-import uuid
 from collections.abc import Awaitable, Callable, Iterable
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import FastAPI, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -36,6 +36,7 @@ from engram.media import probe
 from engram.pipeline import Store, start_job
 from engram.pipeline.stages import STAGES
 from engram.pipeline.store import Job
+from engram.storage import Storage, storage_from
 from engram.web import course as course_view
 from engram.web import exports
 
@@ -64,7 +65,12 @@ OUTPUTS = [
     ("sync", "Every moment linked", "Click any note, card or answer to jump to it in the lecture."),
 ]
 
-VIDEO_TYPES = {".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi"}
+VIDEO_TYPES = {
+    ".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska", ".webm": "video/webm", ".avi": "video/x-msvideo",
+}  # fmt: skip
+UPLOAD_ID = re.compile(r"^[0-9a-f]{32}$")
+WRONG_CODE_LIMIT, WRONG_CODE_WINDOW = 10, 600.0  # per address: guessing codes gets slow
 MAX_UPLOAD_BYTES = 2 * 1024**3
 MAX_QUEUED = 5  # more waiting than this and a new upload is turned away, not left for hours
 MIN_FREE_BYTES = 4 * 1024**3  # an upload, its web copy and its frames need room
@@ -75,6 +81,7 @@ def create_app(
     allowed_hosts: Iterable[str] = ("127.0.0.1", "localhost"),
     *,
     accept_uploads: bool = False,
+    storage: Storage | None = None,
 ) -> FastAPI:
     """`accept_uploads` is on when a worker runs alongside (`engram serve --uploads`)."""
     app = FastAPI(title="Engram", docs_url=None, redoc_url=None, openapi_url=None)
@@ -87,13 +94,22 @@ def create_app(
     store = Store(settings.data_dir / "engram.sqlite3")
     jobs_root = settings.data_dir / "jobs"
     uploads = accept_uploads and settings.uploads_enabled
+    storage = storage or storage_from(settings)
+    wrong_codes: dict[str, list[float]] = {}
+    headers = dict(SECURITY_HEADERS)
+    if storage is not None:  # pages play from, and upload to, the R2 bucket's own address
+        csp = headers["Content-Security-Policy"]
+        csp = csp.replace("connect-src 'self'", f"connect-src 'self' {storage.origin}")
+        headers["Content-Security-Policy"] = csp.replace(
+            "media-src 'self'", f"media-src 'self' {storage.origin}"
+        )
 
     @app.middleware("http")
     async def add_security_headers(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         response = await call_next(request)
-        response.headers.update(SECURITY_HEADERS)
+        response.headers.update(headers)
         return response
 
     # Registered on Starlette's base class, which unknown URLs raise, so they get it too.
@@ -125,54 +141,125 @@ def create_app(
     def home(request: Request) -> Response:
         return home_page(request)
 
-    @app.post("/jobs")
-    def upload(
-        request: Request,
-        video: UploadFile = File(...),  # noqa: B008
-        access_code: str = Form(""),
-        title: str = Form(""),
-    ) -> Response:
+    # ---- Uploads: the access code is checked before a single byte of video is sent.
+    #  1. POST /uploads           {access_code, filename, size, title} → a one-time upload slot
+    #  2. PUT  <slot's put_url>   the file: straight to R2 (signed URL) or to this server
+    #  3. POST /uploads/{id}/done → the job, queued for the worker
+
+    def refused(message: str, status: int) -> Response:
+        return JSONResponse({"error": message}, status_code=status)
+
+    def client_ip(request: Request) -> str:
+        return request.headers.get("x-real-ip") or (request.client.host if request.client else "")
+
+    @app.post("/uploads")
+    async def start_upload(request: Request) -> Response:
         if not uploads:
             raise StarletteHTTPException(404)
-        if not any(hmac.compare_digest(access_code.encode(), c.encode())
-                   for c in settings.access_codes):  # fmt: skip
-            return home_page(request, error="That access code isn't valid.", status=403)
-        if sum(1 for j in store.jobs() if j.status == "queued") >= MAX_QUEUED:
-            return home_page(request, error="Engram is busy with other lectures. Try again in "
-                             "an hour.", status=503)  # fmt: skip
-        if shutil.disk_usage(settings.data_dir).free < MIN_FREE_BYTES:
-            return home_page(request, error="The server is short of disk space, so uploads "
-                             "are paused for now.", status=507)  # fmt: skip
-        suffix = Path(video.filename or "").suffix.lower()
-        if suffix not in VIDEO_TYPES:
-            return home_page(request, error="Upload a video file: MP4, MOV, MKV or WebM.",
-                             status=400)  # fmt: skip
-        folder = settings.data_dir / "uploads"
-        folder.mkdir(parents=True, exist_ok=True)
-        target = folder / f"{uuid.uuid4().hex}{suffix}"
-        with target.open("wb") as out:
-            shutil.copyfileobj(video.file, out, length=1024 * 1024)
-        if target.stat().st_size > MAX_UPLOAD_BYTES:
-            target.unlink()
-            return home_page(request, error="That file is over 2 GB.", status=413)
+        ip = client_ip(request)
+        now = time.time()
+        recent = [t for t in wrong_codes.get(ip, []) if now - t < WRONG_CODE_WINDOW]
+        wrong_codes[ip] = recent
+        if len(recent) >= WRONG_CODE_LIMIT:
+            return refused("Too many wrong access codes. Try again in 10 minutes.", 429)
         try:
-            info = probe(target)
-            if info.duration > settings.max_minutes * 60:
-                raise EngramError(
-                    f"This lecture is {info.duration / 60:.0f} minutes long. "
-                    f"The limit is {settings.max_minutes} minutes."
-                )
-        except EngramError as e:
-            target.unlink()
-            return home_page(request, error=str(e), status=400)
-        name = title.strip()[:120] or Path(video.filename or "Lecture").stem
-        job, existed = start_job(store, target, name)
-        if existed:
-            target.unlink()  # the same bytes were uploaded before: reuse that job
+            body = await request.json()
+            code, filename = str(body.get("access_code", "")), str(body.get("filename", ""))
+            size, title = int(body.get("size", 0)), str(body.get("title", ""))
+        except (ValueError, TypeError, AttributeError):
+            return refused("The upload request was malformed.", 400)
+        if not any(hmac.compare_digest(code.encode(), c.encode()) for c in settings.access_codes):
+            recent.append(now)
+            return refused("That access code isn't valid.", 403)
+        suffix = Path(filename).suffix.lower()
+        if suffix not in VIDEO_TYPES:
+            return refused("Upload a video file: MP4, MOV, MKV or WebM.", 400)
+        if not 0 < size <= MAX_UPLOAD_BYTES:
+            return refused("That file is over 2 GB.", 413)
+        if sum(1 for j in store.jobs() if j.status == "queued") >= MAX_QUEUED:
+            return refused("Engram is busy with other lectures. Try again in an hour.", 503)
+        if storage is None and shutil.disk_usage(settings.data_dir).free < MIN_FREE_BYTES + size:
+            return refused("The server is short of disk space, so uploads are paused.", 507)
+        content_type = VIDEO_TYPES[suffix]
+        name = title.strip()[:120] or Path(filename).stem[:120] or "Lecture"
+        slot = store.create_upload("uploads/{id}" + suffix, filename[:200], name, size,
+                                   content_type)  # fmt: skip
+        put_url = (storage.upload_url(slot.key, size, content_type) if storage
+                   else f"/uploads/{slot.id}/file")  # fmt: skip
+        return JSONResponse({"id": slot.id, "put_url": put_url, "content_type": content_type})
+
+    @app.put("/uploads/{upload_id}/file")
+    async def receive_file(request: Request, upload_id: str) -> Response:
+        """Without R2, the file comes here, streamed to disk, never more than was declared."""
+        slot = store.upload(upload_id) if UPLOAD_ID.match(upload_id) else None
+        if storage is not None or slot is None or slot.job_id:
+            raise StarletteHTTPException(404)
+        target = settings.data_dir / slot.key
+        target.parent.mkdir(parents=True, exist_ok=True)
+        received = 0
+        with target.open("wb") as out:
+            async for chunk in request.stream():
+                received += len(chunk)
+                if received > slot.size:
+                    out.close()
+                    target.unlink()
+                    return refused("The file is bigger than declared.", 413)
+                out.write(chunk)
+        return JSONResponse({"received": received})
+
+    @app.post("/uploads/{upload_id}/done")
+    def finish_upload(upload_id: str) -> Response:
+        slot = store.upload(upload_id) if UPLOAD_ID.match(upload_id) else None
+        if slot is None:
+            return refused("This upload has expired. Choose the file again.", 404)
+        if slot.job_id:
+            return JSONResponse({"job": f"/jobs/{slot.job_id}"})
+        if storage is not None:
+            found = storage.head(slot.key)
+            if found is None or found["size"] != slot.size:
+                return refused("The upload didn't arrive complete. Try again.", 400)
+            # The worker downloads it here when the job runs, and deletes it afterwards.
+            local = settings.data_dir / "work" / slot.key
+            sha = f"r2:{found['etag']}:{found['size']}"
+            existing = store.find_by_source(sha)
+            if existing is not None:
+                storage.delete(slot.key)  # the same bytes were uploaded before
+                job = existing
+            else:
+                job = store.create_job(slot.title, local, sha, source_key=slot.key)
+        else:
+            target = settings.data_dir / slot.key
+            if not target.exists() or target.stat().st_size != slot.size:
+                return refused("The upload didn't arrive complete. Try again.", 400)
+            try:
+                info = probe(target)
+                if info.duration > settings.max_minutes * 60:
+                    raise EngramError(
+                        f"This lecture is {info.duration / 60:.0f} minutes long. "
+                        f"The limit is {settings.max_minutes} minutes."
+                    )
+            except EngramError as e:
+                target.unlink()
+                return refused(str(e), 400)
+            job, existed = start_job(store, target, slot.title)
+            if existed:
+                target.unlink()  # the same bytes were uploaded before: reuse that job
+                existing = job
+            else:
+                existing = None
+        if existing is not None:
             unfinished = not (jobs_root / job.id / "course.json").exists()
             if job.status == "failed" or (job.status == "done" and unfinished):
                 store.set_job_status(job.id, "queued")  # retry, or catch up on newer stages
-        return RedirectResponse(f"/jobs/{job.id}", status_code=303)
+        store.finish_upload(slot.id, job.id)
+        return JSONResponse({"job": f"/jobs/{job.id}"})
+
+    @app.post("/jobs")
+    def upload_without_script(request: Request) -> Response:
+        """The form needs JavaScript: it checks the access code before sending the file."""
+        if not uploads:
+            raise StarletteHTTPException(404)
+        return home_page(request, error="Uploading needs JavaScript turned on.", status=400)
 
     def find_job(job_id: str) -> Job:
         if not course_view.JOB_ID.match(job_id):
@@ -245,17 +332,32 @@ def create_app(
     def lecture_video(job_id: str) -> Response:
         job = find_job(job_id)
         files = course_files(job_id)
+        playback = files.read("playback.json") or {}
+        if playback.get("key"):
+            return remote(playback["key"])
         copy = files.folder / "playback.mp4"
         path = copy if copy.exists() else job.source_path
         if not path.exists():
             raise StarletteHTTPException(404)
         return FileResponse(path, media_type="video/mp4")  # supports Range: seeking works
 
+    def remote(key: str, download: str | None = None) -> Response:
+        """A short-lived signed link to the file in R2 (the bucket itself stays private)."""
+        if storage is None:
+            raise StarletteHTTPException(404)
+        return RedirectResponse(storage.url(key, download=download), status_code=302)
+
     @app.get("/courses/{job_id}/files/{name:path}")
-    def job_file(job_id: str, name: str) -> Response:
+    def job_file(job_id: str, name: str, download: int = 0) -> Response:
         if not course_view.PUBLIC_FILE.match(name):
             raise StarletteHTTPException(404)
-        path = course_files(job_id).folder / name
+        files = course_files(job_id)
+        where = (files.read("summary.json") or {}).get("videos", {}).get(name, {})
+        if where.get("key"):
+            title = exports.slug(files.course["title"])
+            label = f"{title}-{name}" if download else None
+            return remote(where["key"], label)
+        path = files.folder / name
         if not path.is_file():
             raise StarletteHTTPException(404)
         media = "text/vtt" if name.endswith(".vtt") else None

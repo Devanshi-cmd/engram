@@ -67,7 +67,16 @@ class CourseFiles:
     course: dict[str, Any]
 
     def has(self, name: str) -> bool:
-        return (self.folder / name).exists()
+        """On disk, or (for the summary videos) recorded as stored in R2."""
+        videos = (self.read("summary.json") or {}).get("videos", {})
+        return name in videos or (self.folder / name).exists()
+
+    def read(self, name: str) -> dict[str, Any] | None:
+        path = self.folder / name
+        if not path.exists():
+            return None
+        data: dict[str, Any] = json.loads(path.read_text())
+        return data
 
 
 def load(folder: Path) -> CourseFiles | None:

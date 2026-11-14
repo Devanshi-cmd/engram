@@ -73,6 +73,38 @@ def eval_(
     typer.echo(run(load_settings(), ROOT, only, typer.echo))
 
 
+@app.command(name="r2-check")
+def r2_check(
+    origin: list[str] = typer.Option(  # noqa: B008
+        ["https://engram.devanshitiwari.com"], help="Site allowed to upload from a browser."
+    ),
+) -> None:
+    """Check the R2 settings with a round trip, and let the site upload to the bucket."""
+    import tempfile
+    from pathlib import Path
+
+    from engram.config import load_settings
+    from engram.storage import R2Storage, storage_from
+
+    storage = storage_from(load_settings())
+    if not isinstance(storage, R2Storage):
+        typer.secho("✕ R2 isn't configured: fill in the four R2_ values in .env.", fg="red")
+        raise typer.Exit(1)
+    with tempfile.TemporaryDirectory() as tmp:
+        probe_file = Path(tmp) / "probe.txt"
+        probe_file.write_text("engram r2 check")
+        storage.put_file(probe_file, "checks/probe.txt", "text/plain")
+        found = storage.head("checks/probe.txt")
+        storage.delete("checks/probe.txt")
+    typer.echo(f"✓ write, read and delete work in bucket {storage.bucket} ({found})")
+    try:
+        storage.allow_browser_uploads(origin)
+        typer.echo(f"✓ browsers on {', '.join(origin)} may upload (bucket CORS set)")
+    except Exception as e:  # noqa: BLE001  # an object-only token can't set CORS
+        typer.secho(f"! Couldn't set the bucket's CORS rule ({e}). Set it in the Cloudflare "
+                    "dashboard instead; docs/DEPLOY.md has the rule.", fg="yellow")  # fmt: skip
+
+
 @app.command(name="list")
 def list_course(
     job_id: str = typer.Argument(..., help="The job to show or hide."),

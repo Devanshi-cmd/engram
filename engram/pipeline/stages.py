@@ -51,12 +51,21 @@ def _audio(ctx: StageContext) -> str:
 
 
 def _playback(ctx: StageContext) -> str:
-    """What the course page plays: the upload itself when every browser can, else a copy."""
+    """What the course page plays: the upload itself when every browser can, else a copy.
+    With R2, the file played lives there (an upload already does) and nothing stays here."""
     source = ctx.job.source_path
+    storage = ctx.services.storage
     copy = ctx.path("playback.mp4")
     if web_playable(source):
         copy.unlink(missing_ok=True)
-        ctx.write_json("playback.json", {"file": None})
+        if storage is None:
+            ctx.write_json("playback.json", {"file": None})
+        elif ctx.job.source_key:
+            ctx.write_json("playback.json", {"key": ctx.job.source_key})
+        else:  # made from the command line: put the lecture in R2 too
+            key = f"jobs/{ctx.job.id}/playback.mp4"
+            storage.put_file(source, key, "video/mp4")
+            ctx.write_json("playback.json", {"key": key})
         return "the upload plays as it is"
     info = MediaInfo.model_validate(ctx.read_json("media.json"))
     total = _clock(info.duration)
@@ -65,8 +74,16 @@ def _playback(ctx: StageContext) -> str:
         ctx.progress(f"Web copy: {_clock(done * info.duration)} of {total}")
 
     make_web_copy(source, copy, info.duration, report)
-    ctx.write_json("playback.json", {"file": "playback.mp4", "bytes": copy.stat().st_size})
-    return f"{info.video_codec} → H.264 · {copy.stat().st_size / 1e6:.0f} MB"
+    size = copy.stat().st_size
+    if storage is None:
+        ctx.write_json("playback.json", {"file": "playback.mp4", "bytes": size})
+    else:
+        key = f"jobs/{ctx.job.id}/playback.mp4"
+        ctx.progress("Storing the web copy")
+        storage.put_file(copy, key, "video/mp4")
+        copy.unlink()
+        ctx.write_json("playback.json", {"key": key, "bytes": size})
+    return f"{info.video_codec} → H.264 · {size / 1e6:.0f} MB"
 
 
 def _keyterms(ctx: StageContext) -> list[str]:
@@ -492,7 +509,19 @@ def _video(ctx: StageContext) -> str:
     compose.poster(compose.LANDSCAPE, script, shots, narration, ctx.path("summary.jpg"))
     chunks = compose.Renderer(compose.LANDSCAPE, script, shots, narration).chunks
     ctx.path("summary.vtt").write_text(webvtt(chunks))
-    size = sum(ctx.path(n).stat().st_size for n in ("summary.mp4", "summary-portrait.mp4"))
+    names = ("summary.mp4", "summary-portrait.mp4")
+    size = sum(ctx.path(n).stat().st_size for n in names)
+    storage = ctx.services.storage
+    videos: dict[str, dict[str, str]] = {}
+    for name in names:
+        if storage is None:
+            videos[name] = {"file": name}
+        else:  # the videos live in R2; the poster and captions are small and stay here
+            key = f"jobs/{ctx.job.id}/{name}"
+            storage.put_file(ctx.path(name), key, "video/mp4")
+            ctx.path(name).unlink()
+            videos[name] = {"key": key}
+    ctx.write_json("summary.json", {"videos": videos, "seconds": round(total, 1)})
     return f"{total:.0f} s · {len(shots)} shots · 1920×1080 and 1080×1350 · {size / 1e6:.1f} MB"
 
 
@@ -528,6 +557,7 @@ STAGES: list[Stage] = [
         _playback,
         deps=("probe",),
         outputs=("playback.json",),
+        params=lambda s: {"r2": s.storage is not None},  # switching to R2 moves the copy there
     ),
     Stage(
         "keyframes",
@@ -613,7 +643,8 @@ STAGES: list[Stage] = [
         "Rendering the summary video",
         _video,
         deps=("keyframes", "script", "narrate"),
-        outputs=("summary.mp4", "summary-portrait.mp4", "summary.jpg", "summary.vtt"),
-        version=3,  # v3: letterboxed slides shown whole; captions split by sentence
+        outputs=("summary.json", "summary.jpg", "summary.vtt"),
+        version=4,  # v4: summary.json says where the videos are (on disk or in R2)
+        params=lambda s: {"r2": s.storage is not None},
     ),
 ]

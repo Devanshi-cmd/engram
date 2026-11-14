@@ -6,6 +6,7 @@ import re
 import shutil
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -41,17 +42,26 @@ def finished(runner: Runner, tmp_path: Path, transcriber: FakeTranscriber) -> st
 # --- Uploads and the queue ---------------------------------------------------------------
 
 
+def upload(client: TestClient, video: Path, code: str = "let-me-in", title: str = "") -> Any:
+    """What the page's script does: the code first, then the file, then 'done'."""
+    slot = client.post("/uploads", json={"access_code": code, "filename": video.name,
+                                         "size": video.stat().st_size, "title": title})  # fmt: skip
+    if slot.status_code != 200:
+        return slot
+    body = slot.json()
+    sent = client.put(body["put_url"], content=video.read_bytes(),
+                      headers={"Content-Type": body["content_type"]})  # fmt: skip
+    assert sent.status_code == 200, sent.text
+    return client.post(f"/uploads/{body['id']}/done")
+
+
 def test_an_upload_is_queued_and_the_worker_builds_it(
     runner: Runner, settings: Settings, lecture_video: Path
 ) -> None:
     client = web(settings)
-    with lecture_video.open("rb") as f:
-        response = client.post(
-            "/jobs", data={"access_code": "let-me-in", "title": "My lecture"},
-            files={"video": ("talk.mp4", f, "video/mp4")}, follow_redirects=False,
-        )  # fmt: skip
-    assert response.status_code == 303
-    job_id = response.headers["location"].rsplit("/", 1)[1]
+    done = upload(client, lecture_video, title="My lecture")
+    assert done.status_code == 200
+    job_id = done.json()["job"].rsplit("/", 1)[1]
     job = runner.store.job(job_id)
     assert job.status == "queued" and job.title == "My lecture"
     assert job.source_path.parent == settings.data_dir / "uploads"
@@ -64,40 +74,60 @@ def test_an_upload_is_queued_and_the_worker_builds_it(
     assert live.headers["HX-Redirect"] == f"/courses/{job_id}"
 
 
+def test_a_wrong_code_gets_no_upload_slot_and_guessing_slows_down(
+    settings: Settings, lecture_video: Path
+) -> None:
+    client = web(settings)
+    for _ in range(10):
+        r = upload(client, lecture_video, code="guess")
+        assert r.status_code == 403 and r.json()["error"] == "That access code isn't valid."
+    assert upload(client, lecture_video).status_code == 429  # even the right code, for a while
+    assert not (settings.data_dir / "uploads").exists()  # not a byte was stored
+
+
+def test_an_upload_slot_takes_only_what_was_declared_and_only_once(
+    settings: Settings, lecture_video: Path
+) -> None:
+    client = web(settings)
+    body = client.post("/uploads", json={"access_code": "let-me-in", "filename": "a.mp4",
+                                         "size": 10}).json()  # fmt: skip
+    r = client.put(body["put_url"], content=b"x" * 11)
+    assert r.status_code == 413 and not list((settings.data_dir / "uploads").iterdir())
+    assert client.put("/uploads/" + "0" * 32 + "/file", content=b"x").status_code == 404
+    assert client.post("/uploads/" + "0" * 32 + "/done").status_code == 404
+
+
 def test_the_same_video_twice_reuses_the_job(settings: Settings, lecture_video: Path) -> None:
     client = web(settings)
-    ids = []
-    for _ in range(2):
-        with lecture_video.open("rb") as f:
-            r = client.post("/jobs", data={"access_code": "let-me-in"},
-                            files={"video": ("a.mp4", f)}, follow_redirects=False)  # fmt: skip
-        ids.append(r.headers["location"])
-    assert ids[0] == ids[1]
+    first = upload(client, lecture_video).json()["job"]
+    assert upload(client, lecture_video).json()["job"] == first
     assert len(list((settings.data_dir / "uploads").iterdir())) == 1  # the copy was dropped
 
 
 @pytest.mark.parametrize(
-    ("code", "name", "content", "status", "message"),
+    ("name", "content", "status", "message"),
     [
-        ("wrong", "a.mp4", b"x", 403, "access code"),
-        ("let-me-in", "notes.pdf", b"%PDF", 400, "Upload a video"),
-        ("let-me-in", "fake.mp4", b"not a video at all", 400, ""),
+        ("notes.pdf", b"%PDF", 400, "Upload a video"),
+        ("fake.mp4", b"not a video at all", 400, ""),
     ],
 )
 def test_bad_uploads_are_refused_and_nothing_is_kept(
-    settings: Settings, code: str, name: str, content: bytes, status: int, message: str
+    settings: Settings, tmp_path: Path, name: str, content: bytes, status: int, message: str
 ) -> None:
-    r = web(settings).post("/jobs", data={"access_code": code},
-                           files={"video": (name, content)})  # fmt: skip
-    assert r.status_code == status and 'role="alert"' in r.text and message in r.text
+    path = tmp_path / name
+    path.write_bytes(content)
+    r = upload(web(settings), path)
+    assert r.status_code == status and message in r.json()["error"]
     uploads = settings.data_dir / "uploads"
     assert not uploads.exists() or not list(uploads.iterdir())
     assert Store(settings.data_dir / "engram.sqlite3").jobs() == []
 
 
-def test_without_uploads_the_endpoint_does_not_exist(settings: Settings) -> None:
-    r = web(settings, uploads=False).post("/jobs", files={"video": ("a.mp4", b"x")})
-    assert r.status_code == 404
+def test_without_uploads_the_endpoints_do_not_exist(settings: Settings) -> None:
+    client = web(settings, uploads=False)
+    assert client.post("/uploads", json={}).status_code == 404
+    assert client.post("/jobs").status_code == 404
+    assert "needs JavaScript" in web(settings).post("/jobs").text
 
 
 def test_a_stopped_worker_leaves_nothing_stuck(runner: Runner, lecture_video: Path) -> None:
@@ -247,7 +277,5 @@ def test_a_full_queue_turns_uploads_away(
         copy = tmp_path / f"v{i}.mp4"
         copy.write_bytes(lecture_video.read_bytes() + bytes([i]))  # different bytes, new job
         start_job(runner, copy)
-    with lecture_video.open("rb") as f:
-        r = web(settings).post("/jobs", data={"access_code": "let-me-in"},
-                               files={"video": ("a.mp4", f)})  # fmt: skip
-    assert r.status_code == 503 and "busy" in r.text
+    r = upload(web(settings), lecture_video)
+    assert r.status_code == 503 and "busy" in r.json()["error"]

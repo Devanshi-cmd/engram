@@ -284,3 +284,13 @@ Smaller lessons along the way:
 - **A course link before the course exists** goes to the job's progress page instead of a 404.
 - **Empty states:** a lecture with no flashcards, no quiz questions, no diagrams or no recognised speech says so instead of showing an empty widget.
 - **Retrying:** a failed job's page says to upload the same video again; finished steps are not repeated.
+
+## Big files in Cloudflare R2, uploads straight from the browser
+
+- **What:** uploads, web copies and summary videos live in an R2 bucket. The server's disk holds the lecture being processed (deleted after the job), frames, transcripts and the database.
+- **Why:** this server also hosts DevSwarm and other sites. One CS229 run left 472 MB of source and 502 MB of web copy on disk; a few dozen uploads would fill it. R2 has no egress fees, which matters for video that's watched repeatedly.
+- **The access code comes first:** before, the browser sent the whole file in one form post and the server checked the code afterwards, so anyone could push 2 GB at the server and have it discarded. Now the page sends the code with the file's name and size, and only a valid code gets a one-time upload slot. With R2, that slot is a signed PUT URL whose signature covers the key, the content type and the exact size, so it can't be reused for anything else or a bigger file. The browser uploads straight to R2: the server never handles the bytes.
+- **Guessing is slow:** 10 wrong codes from one address in 10 minutes block that address for the rest of the window.
+- **Without R2,** the same three steps run against this server (`PUT /uploads/<id>/file`, streamed, cut off at the declared size), so the form behaves the same way in both modes.
+- **Alternatives:** a public bucket with unguessable names (anyone with a link could share the raw lecture forever; signed links expire after 6 hours); presigned POST policies (R2 doesn't support them; a signed PUT with the length in the signature does the same job); multipart uploads (only needed above 5 GB, and the limit is 2 GB).
+- **Caching still works:** jobs uploaded to R2 use the object's ETag and size as their content id, so the same file uploaded twice still reuses the first job.

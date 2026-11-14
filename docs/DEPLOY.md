@@ -45,6 +45,25 @@ sudo certbot --nginx -d engram.devanshitiwari.com --redirect
 - `client_max_body_size 2g` and `proxy_request_buffering off`: lecture videos stream straight through to the app instead of being buffered on disk first.
 - `proxy_read_timeout` and `proxy_send_timeout 600s`: a 2 GB upload on a slow connection takes minutes.
 
+## Cloudflare R2 (big files)
+
+Uploads, web copies and summary videos live in an R2 bucket, so the server's disk only holds the lecture the worker is processing (deleted when the job ends), frames, transcripts and the database. Until the four `R2_` values in `.env` are filled in, everything stays on disk.
+
+1. In the Cloudflare dashboard: **R2 → Create bucket** (for example `engram-lectures`). Keep it private: pages play files through signed links that last 6 hours.
+2. **R2 → Manage API tokens → Create API token**, permission **Object Read & Write**, limited to that bucket. Copy the Access Key ID and Secret Access Key.
+3. Fill in `.env`: `R2_ACCOUNT_ID` (shown on the R2 overview page), `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
+4. Run `uv run engram r2-check`. It writes, reads and deletes a test object, then tries to set the bucket's CORS rule. An object-only token can't set CORS; if it says so, add this rule under the bucket's **Settings → CORS policy**:
+
+   ```json
+   [{"AllowedOrigins": ["https://engram.devanshitiwari.com"], "AllowedMethods": ["PUT", "GET", "HEAD"], "AllowedHeaders": ["content-type"], "MaxAgeSeconds": 3600}]
+   ```
+
+5. `sudo systemctl restart engram-web engram-worker`.
+
+Optional: an R2 lifecycle rule that deletes `uploads/` objects older than a day if no job claimed them (someone with a code who started an upload and closed the tab).
+
+How uploads work: the page sends the access code, the file's name and its size first. Only if the code is right does the server create a one-time upload slot (an hour) and answer with a signed PUT URL for exactly that key, size and type. The browser sends the file straight to R2, and the server never holds it. Then the page reports "done"; the server checks that the object arrived complete and queues the job. Ten wrong codes from one address in 10 minutes block it for the rest of that window.
+
 ## The worker
 
 - Runs as `devdi`, so headless Claude Code uses that account's login (the Claude plan). Check with `sudo -u devdi claude -p "hi"` if Opus stages fail with a login error.

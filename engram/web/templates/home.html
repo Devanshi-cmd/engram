@@ -9,7 +9,8 @@
     <p class="home-hero-lead">Engram listens to the talk, reads the slides and the whiteboard, and builds notes, diagrams, flashcards, a quiz and a narrated recap.</p>
     {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
     {% if uploads_enabled %}
-    <form class="home-form" method="post" action="/jobs" enctype="multipart/form-data">
+    <form class="home-form" method="post" action="/jobs" enctype="multipart/form-data" data-upload>
+      <p class="form-error" role="alert" data-upload-error hidden></p>
       <label class="dropzone">
         <input class="dropzone-input" type="file" name="video" accept="video/*" required>
         <span class="dropzone-icon">{{ icon("upload") }}</span>

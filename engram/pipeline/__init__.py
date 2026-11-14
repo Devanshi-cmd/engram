@@ -45,8 +45,11 @@ def default_services(settings: Settings, transcriber: Transcriber | None = None)
         from engram.voice.elevenlabs import ElevenLabsNarrator
 
         narrator = ElevenLabsNarrator(settings.elevenlabs_api_key, settings.elevenlabs_voice_id)
+    from engram.storage import storage_from
+
     cache = PaidCache(settings.data_dir / "cache")
-    return Services(settings, transcriber, cache, reader, judge=judge, narrator=narrator)
+    return Services(settings, transcriber, cache, reader, judge=judge, narrator=narrator,
+                    storage=storage_from(settings))  # fmt: skip
 
 
 def build_runner(services: Services, stages: list[Stage] | None = None) -> Runner:

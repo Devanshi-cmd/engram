@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from engram.llm.frames import FrameReader
     from engram.llm.judge import Judge
     from engram.llm.reasoner import Reasoner
+    from engram.storage import Storage
     from engram.voice.models import Narrator
 
 EventSink = Callable[[str | None, str], None]
@@ -56,6 +57,8 @@ class Services:
     judge: Judge | None = None
     # None means no voice is configured: the narrate stage fails with a readable message.
     narrator: Narrator | None = None
+    # Cloudflare R2 for big files; None keeps everything on disk.
+    storage: Storage | None = None
 
     def get_reasoner(self) -> Reasoner:
         from engram.llm.reasoner import OpusReasoner
@@ -161,7 +164,31 @@ class Runner:
         return self.jobs_root / job_id
 
     def run(self, job_id: str, sink: EventSink | None = None) -> bool:
-        """Runs every stage that isn't up to date. True when all of them succeed."""
+        """Runs every stage that isn't up to date. True when all of them succeed.
+
+        A lecture kept in R2 is downloaded first and its local copy deleted afterwards, so
+        the disk only ever holds the lecture being worked on."""
+        job = self.store.job(job_id)
+        storage = self.services.storage
+        remote = job.source_key is not None and storage is not None
+        if remote and not job.source_path.exists():
+            self.job_dir(job_id).mkdir(parents=True, exist_ok=True)
+            assert storage is not None and job.source_key is not None
+            self.store.add_event(job_id, None, "Fetching the lecture from storage")
+            try:
+                storage.get_file(job.source_key, job.source_path)
+            except Exception as e:  # noqa: BLE001  # a readable failure, not a crashed worker
+                self._log(self.job_dir(job_id), "download", e)
+                self.store.set_job_status(job_id, "failed", "The upload couldn't be fetched "
+                                          "from storage. Try again in a few minutes.")  # fmt: skip
+                return False
+        try:
+            return self._run(job_id, sink)
+        finally:
+            if remote:
+                job.source_path.unlink(missing_ok=True)
+
+    def _run(self, job_id: str, sink: EventSink | None = None) -> bool:
         job = self.store.job(job_id)
         job_dir = self.job_dir(job_id)
         job_dir.mkdir(parents=True, exist_ok=True)
