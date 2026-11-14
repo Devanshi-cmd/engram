@@ -20,7 +20,7 @@ from engram.course.script import write_script
 from engram.errors import EngramError, MediaError, ProviderError
 from engram.llm.frames import ClaudeCodeFrameReader, FrameContext, FrameReader, FrameReading, Read
 from engram.llm.judge import Judge
-from engram.media import MediaInfo, extract_audio, probe
+from engram.media import MediaInfo, extract_audio, make_web_copy, probe, web_playable
 from engram.pipeline.hashing import file_sha256, key_of
 from engram.pipeline.runner import PaidCache, Stage, StageContext
 from engram.pipeline.thinking import Thinker
@@ -48,6 +48,25 @@ def _probe(ctx: StageContext) -> str:
 def _audio(ctx: StageContext) -> str:
     extract_audio(ctx.job.source_path, ctx.path("audio.mp3"))
     return f"{ctx.path('audio.mp3').stat().st_size / 1e6:.1f} MB"
+
+
+def _playback(ctx: StageContext) -> str:
+    """What the course page plays: the upload itself when every browser can, else a copy."""
+    source = ctx.job.source_path
+    copy = ctx.path("playback.mp4")
+    if web_playable(source):
+        copy.unlink(missing_ok=True)
+        ctx.write_json("playback.json", {"file": None})
+        return "the upload plays as it is"
+    info = MediaInfo.model_validate(ctx.read_json("media.json"))
+    total = _clock(info.duration)
+
+    def report(done: float) -> None:
+        ctx.progress(f"Web copy: {_clock(done * info.duration)} of {total}")
+
+    make_web_copy(source, copy, info.duration, report)
+    ctx.write_json("playback.json", {"file": "playback.mp4", "bytes": copy.stat().st_size})
+    return f"{info.video_codec} → H.264 · {copy.stat().st_size / 1e6:.0f} MB"
 
 
 def _keyterms(ctx: StageContext) -> list[str]:
@@ -444,7 +463,7 @@ def _narrate(ctx: StageContext) -> str:
         audio = audio_cache.read_bytes()
         reused = " · reused"
     else:
-        ctx.progress(f"Recording {len(text):,} characters with {narrator.name}")
+        ctx.progress(f"Recording {len(text):,} characters of narration")
         audio, narration = narrator.speak(text)
         audio_cache.parent.mkdir(parents=True, exist_ok=True)
         audio_cache.write_bytes(audio)
@@ -502,6 +521,13 @@ STAGES: list[Stage] = [
         outputs=("transcript.json",),
         version=2,  # v2: filler fragments wait up to 5 s for the rest of their sentence
         params=lambda s: {"by": s.transcriber.name},
+    ),
+    Stage(
+        "playback",
+        "Making a copy every browser plays",
+        _playback,
+        deps=("probe",),
+        outputs=("playback.json",),
     ),
     Stage(
         "keyframes",

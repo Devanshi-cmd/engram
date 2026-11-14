@@ -21,6 +21,9 @@ def serve(
     allowed_host: list[str] = typer.Option(  # noqa: B008
         ["127.0.0.1", "localhost"], help="Host header to accept; repeat for each public hostname."
     ),
+    uploads: bool = typer.Option(
+        False, help="Accept uploads (needs ENGRAM_ACCESS_CODES and a running `engram worker`)."
+    ),
 ) -> None:
     """Run the web app."""
     import uvicorn
@@ -28,7 +31,54 @@ def serve(
     from engram.config import load_settings
     from engram.web.app import create_app
 
-    uvicorn.run(create_app(load_settings(), allowed_hosts=allowed_host), host=host, port=port)
+    app_ = create_app(load_settings(), allowed_hosts=allowed_host, accept_uploads=uploads)
+    uvicorn.run(app_, host=host, port=port)
+
+
+@app.command()
+def worker() -> None:
+    """Run queued lectures, one at a time, until stopped."""
+    import logging
+    import signal
+
+    from engram.config import load_settings
+    from engram.errors import EngramError
+    from engram.pipeline import build_runner, default_services
+    from engram.worker import run_queue
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    stopping = False
+
+    def stop(*_: object) -> None:
+        nonlocal stopping
+        stopping = True  # finish the current job's running stage, then exit
+
+    signal.signal(signal.SIGTERM, stop)
+    try:
+        runner = build_runner(default_services(load_settings()))
+    except EngramError as e:
+        typer.secho(f"✕ {e}", fg="red", err=True)
+        raise typer.Exit(1) from e
+    run_queue(runner, stop=lambda: stopping)
+
+
+@app.command(name="list")
+def list_course(
+    job_id: str = typer.Argument(..., help="The job to show or hide."),
+    hide: bool = typer.Option(False, "--hide", help="Take it off the home page."),
+) -> None:
+    """Show a finished course among the home page's sample courses (or hide it)."""
+    from engram.config import load_settings
+    from engram.pipeline import Store
+
+    store = Store(load_settings().data_dir / "engram.sqlite3")
+    try:
+        store.job(job_id)
+    except KeyError:
+        typer.secho(f"✕ No job {job_id}", fg="red", err=True)
+        raise typer.Exit(1) from None
+    store.set_listed(job_id, not hide)
+    typer.echo(f"{job_id} is {'hidden' if hide else 'listed on the home page'}.")
 
 
 @app.command()
@@ -74,7 +124,8 @@ def jobs() -> None:
 
     store = Store(load_settings().data_dir / "engram.sqlite3")
     for job in store.jobs():
-        typer.echo(f"{job.id}  {job.status:<7}  {job.title}")
+        listed = "listed" if job.listed else ""
+        typer.echo(f"{job.id}  {job.status:<7}  {listed:<6}  {job.title}")
 
 
 @app.command()

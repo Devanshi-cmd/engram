@@ -54,14 +54,16 @@ def build_runner(services: Services, stages: list[Stage] | None = None) -> Runne
     return Runner(Store(data / "engram.sqlite3"), services, stages or STAGES, data / "jobs")
 
 
-def start_job(runner: Runner, source: Path, title: str | None = None) -> tuple[Job, bool]:
-    """The job for this video, and whether it already existed (same file content = resume)."""
+def start_job(target: Runner | Store, source: Path, title: str | None = None) -> tuple[Job, bool]:
+    """The job for this video, and whether it already existed (same file content = resume).
+    The web app passes just the store: it records jobs, and the worker runs them."""
+    store = target.store if isinstance(target, Runner) else target
     source = source.resolve()
     if not source.is_file():
         raise EngramError(f"No such file: {source}")
     sha = file_sha256(source)
-    existing = runner.store.find_by_source(sha)
+    existing = store.find_by_source(sha)
     if existing is not None:
         return existing, True
     name = title or source.stem.replace("_", " ").replace("-", " ").strip()
-    return runner.store.create_job(name, source, sha), False
+    return store.create_job(name, source, sha), False

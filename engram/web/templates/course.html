@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% from "_icon.html" import icon, output_tile %}
+{% block title %}{{ c.title }} · Engram{% endblock %}
+{% block head %}
+  <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
+  <script src="/static/vendor/katex/katex.min.js" defer></script>
+  <script src="/static/vendor/mermaid.min.js" defer></script>
+  <script src="/static/course.js?v={{ version }}" defer></script>
+{% endblock %}
+{% macro moment(t, label=None) -%}
+{%- if t is not none %}<button type="button" class="moment" data-t="{{ t }}" aria-label="Play the lecture from {{ t | clock }}">{{ icon("play") }}{{ label or (t | clock) }}</button>{% endif -%}
+{%- endmacro %}
+{% macro diagram(d) %}
+<figure class="diagram">
+  <figcaption class="diagram-head"><span class="diagram-title">{{ d.title }}</span>{{ moment(d.t) }}</figcaption>
+  <pre class="mermaid-source">{{ d.mermaid }}</pre>
+  <div class="mermaid-view" aria-hidden="true"></div>
+  <p class="diagram-caption muted">{{ d.caption }}</p>
+</figure>
+{% endmacro %}
+{% block main_attrs %} class="is-wide"{% endblock %}
+{% block content %}
+<div class="course" data-course="{{ c.id }}">
+  <section class="run-hero course-hero">
+    <p class="home-hero-eyebrow">{{ c.lecture_title }}</p>
+    <h1>{{ c.title }}</h1>
+    <p class="run-hero-lead">{{ c.overview }}</p>
+    <ul class="course-facts" aria-label="This course">
+      <li><strong>{{ c.duration }}</strong> lecture</li>
+      <li><strong>{{ c.counts.chapters }}</strong> chapters</li>
+      <li><strong>{{ c.counts.cards }}</strong> flashcards</li>
+      <li><strong>{{ c.counts.questions }}</strong> quiz questions</li>
+      <li><strong>{{ c.counts.diagrams }}</strong> diagrams</li>
+    </ul>
+    <div class="run-hero-actions">
+      <a class="button-secondary button" href="/courses/{{ c.id }}/export/notes.zip">{{ icon("download") }}Notes (Markdown)</a>
+      <a class="button-secondary button" href="/courses/{{ c.id }}/export/anki.txt">{{ icon("download") }}Anki deck</a>
+      <a class="button-secondary button" href="/courses/{{ c.id }}/print">{{ icon("print") }}Print or PDF</a>
+    </div>
+  </section>
+
+  <div class="course-layout">
+    <nav class="course-chapters" aria-label="Chapters">
+      <p class="course-chapters-title">Chapters</p>
+      <ol>
+        {% for ch in c.chapters %}
+        <li><a class="chapter-link" href="#ch-{{ ch.number }}" data-t="{{ ch.start }}" data-end="{{ ch.end }}"><span class="chapter-link-number">{{ ch.number }}</span><span class="chapter-link-title">{{ ch.title }}</span><span class="chapter-link-time num">{{ ch.start | clock }}</span></a></li>
+        {% endfor %}
+      </ol>
+    </nav>
+
+    <aside class="course-player" aria-label="Lecture">
+      <div class="player card">
+        <video id="player" controls preload="metadata" playsinline src="/courses/{{ c.id }}/video"></video>
+        {% if c.filmstrip %}
+        <div class="filmstrip" aria-label="Board and slides">
+          {% for f in c.filmstrip %}
+          <button type="button" class="filmstrip-frame" data-t="{{ f.t }}" aria-label="Play from {{ f.time }}"><img src="/courses/{{ c.id }}/files/thumbs/{{ f.frame }}.jpg" alt="" loading="lazy" width="96" height="54"><span class="num">{{ f.time }}</span></button>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <div class="transcript" id="transcript" data-src="/courses/{{ c.id }}/transcript.json" tabindex="0" aria-label="Transcript">
+          <p class="muted">The transcript follows the video here. Click any word to jump to it.</p>
+        </div>
+      </div>
+    </aside>
+
+    <div class="course-main">
+      <div class="tabs" role="tablist" aria-label="Course">
+        <button type="button" role="tab" id="tab-notes" aria-controls="notes" aria-selected="true">{{ output_tile("notes") }}Notes</button>
+        <button type="button" role="tab" id="tab-diagrams" aria-controls="diagrams" aria-selected="false" tabindex="-1">{{ output_tile("diagram") }}Diagrams</button>
+        <button type="button" role="tab" id="tab-cards" aria-controls="cards" aria-selected="false" tabindex="-1">{{ output_tile("cards") }}Flashcards</button>
+        <button type="button" role="tab" id="tab-quiz" aria-controls="quiz" aria-selected="false" tabindex="-1">{{ output_tile("quiz") }}Quiz</button>
+        {% if c.summary_video %}<button type="button" role="tab" id="tab-summary" aria-controls="summary" aria-selected="false" tabindex="-1">{{ output_tile("video") }}Summary</button>{% endif %}
+      </div>
+
+      <section class="tab-panel" id="notes" role="tabpanel" aria-labelledby="tab-notes">
+        {% for ch in c.chapters %}
+        <article class="chapter card" id="ch-{{ ch.number }}">
+          <header class="chapter-head">
+            <p class="chapter-kicker">Chapter {{ ch.number }} {{ moment(ch.start, ch.span) }}</p>
+            <h2>{{ ch.title }}</h2>
+            <p class="chapter-summary">{{ ch.summary_html }}</p>
+          </header>
+          {% for s in ch.sections %}
+          <section class="notes-section">
+            <h3>{{ s.heading }}</h3>
+            {% if s.figure %}
+            <figure class="board">
+              <button type="button" class="board-frame" data-t="{{ s.figure.t }}" aria-label="Play the lecture from {{ s.figure.t | clock }}"><img src="/courses/{{ c.id }}/files/frames/{{ s.figure.frame }}.jpg" alt="The board at {{ s.figure.t | clock }}" loading="lazy" width="1280" height="720"></button>
+              <figcaption class="muted">The board at {{ s.figure.t | clock }}</figcaption>
+            </figure>
+            {% endif %}
+            <ul class="points">
+              {% for p in s.points %}<li><div class="point-text">{{ p.html }}</div>{{ moment(p.t) }}</li>{% endfor %}
+            </ul>
+          </section>
+          {% endfor %}
+          {% if ch.key_terms %}
+          <section class="notes-section">
+            <h3>Key terms</h3>
+            <dl class="terms">
+              {% for k in ch.key_terms %}<div><dt>{{ k.term }}</dt><dd>{{ k.html }} {{ moment(k.t) }}</dd></div>{% endfor %}
+            </dl>
+          </section>
+          {% endif %}
+          {% for d in ch.diagrams %}{{ diagram(d) }}{% endfor %}
+        </article>
+        {% endfor %}
+        <aside class="card made-with">
+          <h2>How this course was made</h2>
+          <p class="muted">The speech was transcribed with word timings and every board and slide was read by Claude Haiku. Claude Opus wrote the course from that timeline{% if c.stats.frames_opened_by_opus %}, opening {{ c.stats.frames_opened_by_opus | length }} frame images itself to check what was written{% endif %}. A second model then checked every flashcard and quiz answer against the lecture{% if c.removed %} and removed {{ c.removed }} it couldn't find there{% endif %}. Every note links to the moment it came from.</p>
+        </aside>
+      </section>
+
+      <section class="tab-panel" id="diagrams" role="tabpanel" aria-labelledby="tab-diagrams" hidden>
+        {% for d in c.diagrams %}
+        <div class="card diagram-card"><p class="chapter-kicker">Chapter {{ d.chapter }}</p>{{ diagram(d) }}</div>
+        {% else %}
+        <p class="card empty muted">This lecture didn't need diagrams.</p>
+        {% endfor %}
+      </section>
+
+      <section class="tab-panel" id="cards" role="tabpanel" aria-labelledby="tab-cards" hidden>
+        <div class="deck card">
+          <div class="deck-toolbar">
+            <label class="deck-filter-label"><span class="sr-only">Chapter</span>
+              <select class="deck-filter">
+                <option value="all">All chapters</option>
+                {% for ch in c.chapters %}{% if ch.flashcards %}<option value="{{ ch.number }}">{{ ch.number }}. {{ ch.title }}</option>{% endif %}{% endfor %}
+              </select>
+            </label>
+            <span class="deck-progress muted num" aria-live="polite"></span>
+          </div>
+          <ol class="deck-cards">
+            {% for ch in c.chapters %}{% for f in ch.flashcards %}
+            <li class="flashcard" data-id="{{ f.id }}" data-chapter="{{ ch.number }}">
+              <div class="flashcard-face flashcard-front"><span class="flashcard-label">Question</span>{{ f.front_html }}</div>
+              <div class="flashcard-face flashcard-back"><span class="flashcard-label">Answer</span>{{ f.back_html }}<p class="flashcard-source muted">{{ ch.title }} {{ moment(f.t) }}</p></div>
+            </li>
+            {% endfor %}{% endfor %}
+          </ol>
+          <div class="deck-controls" hidden>
+            <button type="button" class="deck-flip">Show answer <kbd>Space</kbd></button>
+            <button type="button" class="deck-again button-secondary" hidden>Again <kbd>1</kbd></button>
+            <button type="button" class="deck-know" hidden>Got it <kbd>2</kbd></button>
+          </div>
+          <div class="deck-done" hidden>
+            <p><strong>You know every card in this set.</strong></p>
+            <button type="button" class="deck-restart button-secondary">Go through them again</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="quiz" role="tabpanel" aria-labelledby="tab-quiz" hidden>
+        <div class="quiz">
+          <p class="quiz-score card" aria-live="polite">{{ c.counts.questions }} questions, each checked against the lecture. Pick an answer to see if you're right.</p>
+          {% for ch in c.chapters %}{% if ch.quiz %}
+          <h3 class="quiz-chapter">{{ ch.number }}. {{ ch.title }}</h3>
+          {% for q in ch.quiz %}
+          <div class="question card" data-answer="{{ q.answer }}" id="{{ q.id }}">
+            <p class="question-text">{{ q.question_html }}</p>
+            <ol class="options" type="A">
+              {% for o in q.options_html %}<li><button type="button" class="option" data-index="{{ loop.index0 }}"><span class="option-letter">{{ "ABCD"[loop.index0] }}</span><span class="option-text">{{ o }}</span></button></li>{% endfor %}
+            </ol>
+            <details class="question-result">
+              <summary>Answer</summary>
+              <p><strong class="question-verdict">The answer is {{ "ABCD"[q.answer] }}.</strong> {{ q.explanation_html }}</p>
+              {{ moment(q.t, "Rewatch " ~ (q.t | clock) if q.t is not none else None) }}
+            </details>
+          </div>
+          {% endfor %}
+          {% endif %}{% endfor %}
+        </div>
+      </section>
+
+      {% if c.summary_video %}
+      <section class="tab-panel" id="summary" role="tabpanel" aria-labelledby="tab-summary" hidden>
+        <div class="card summary-card">
+          <video controls preload="none" playsinline{% if c.captions %} poster="/courses/{{ c.id }}/files/summary.jpg"{% endif %} src="/courses/{{ c.id }}/files/summary.mp4">
+            {% if c.captions %}<track kind="captions" src="/courses/{{ c.id }}/files/summary.vtt" srclang="en" label="English">{% endif %}
+          </video>
+          <p class="muted">A narrated recap of the lecture, written from the course and read by an AI voice.</p>
+          <div class="run-hero-actions">
+            <a class="button-secondary button" href="/courses/{{ c.id }}/files/summary.mp4" download>{{ icon("download") }}Landscape, 1920×1080</a>
+            {% if c.portrait_video %}<a class="button-secondary button" href="/courses/{{ c.id }}/files/summary-portrait.mp4" download>{{ icon("download") }}Portrait for LinkedIn, 1080×1350</a>{% endif %}
+          </div>
+        </div>
+      </section>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

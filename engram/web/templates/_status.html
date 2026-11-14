@@ -1,0 +1,7 @@
+{% macro status_pill(state) -%}
+{%- if state == "done" %}<span class="status status-good"><span class="status-icon" aria-hidden="true">✓</span>Done</span>
+{%- elif state == "failed" %}<span class="status status-critical"><span class="status-icon" aria-hidden="true">✕</span>Failed</span>
+{%- elif state == "running" %}<span class="status status-running"><span class="status-icon" aria-hidden="true">●</span>Running</span>
+{%- else %}<span class="status status-serious"><span class="status-icon" aria-hidden="true">◷</span>Queued</span>
+{%- endif %}
+{%- endmacro %}

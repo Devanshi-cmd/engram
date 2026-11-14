@@ -1,0 +1,45 @@
+{% from "_status.html" import status_pill %}
+<div id="job-live"{% if active %} hx-get="/jobs/{{ job.id }}/live" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <section class="run-hero job-hero">
+    <h1>{{ job.title }}<span class="run-hero-sub">{% if job.status == "queued" %}Waiting for its turn.{% elif job.status == "running" %}Building the course.{% elif job.status == "done" %}Ready.{% else %}Stopped.{% endif %}</span></h1>
+    <p class="run-hero-lead">
+      {% if job.status == "queued" %}{% if ahead %}{{ ahead }} lecture{% if ahead > 1 %}s are{% else %} is{% endif %} ahead of it. {% endif %}This page updates by itself, and you can close it: the work goes on.
+      {% elif job.status == "running" %}A one-hour lecture takes about ten minutes. This page updates by itself, and you can close it: the work goes on.
+      {% elif job.status == "done" %}Every note, card and question links to the moment in the lecture it came from.
+      {% else %}Part of the work finished. What failed is marked below.{% endif %}
+    </p>
+    {% if ready %}<div class="run-hero-actions"><a class="button" href="/courses/{{ job.id }}">Open the course</a></div>{% endif %}
+    <p class="run-hero-meta">{{ status_pill(job.status) }}<span class="mono">job {{ job.id }}</span></p>
+  </section>
+
+  {% if job.error %}<p class="card callout" role="alert"><strong>Why it stopped:</strong> {{ job.error }}</p>{% endif %}
+
+  <section class="progress card" aria-label="Progress">
+    <div class="progress-head">
+      <span class="progress-title">Listen → Read → Write → Check → Narrate</span>
+      <span class="muted num">{{ percent }}%</span>
+    </div>
+    <div class="job-bar" role="progressbar" aria-valuenow="{{ percent }}" aria-valuemin="0" aria-valuemax="100" aria-label="Stages finished"><span class="job-bar-fill w-{{ ((percent / 5) | round | int) * 5 }}"></span></div>
+    <ol class="job-stages">
+      {% for stage in stages %}
+      <li class="job-stage job-stage-{{ stage.status }}">
+        <span class="job-stage-icon" aria-hidden="true">{% if stage.status == "done" %}✓{% elif stage.status == "failed" %}✕{% elif stage.status == "blocked" %}–{% elif stage.status == "running" %}●{% else %}○{% endif %}</span>
+        <span class="job-stage-text">
+          <span class="job-stage-label">{{ stage.label }}<span class="sr-only"> ({{ stage.status }})</span></span>
+          {% if stage.detail %}<span class="job-stage-detail">{{ stage.detail }}</span>{% endif %}
+        </span>
+        {% if stage.seconds %}<span class="job-stage-time muted num">{{ stage.seconds | round | int }} s</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  {% if events and active %}
+  <section class="card">
+    <h2>Latest</h2>
+    <ul class="activity">
+      {% for at, message in events %}<li><span class="mono muted">{{ at }}</span> <span class="activity-detail">{{ message }}</span></li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>

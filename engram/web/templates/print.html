@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ c.title }} · Engram</title>
+  <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="/static/print.css?v={{ version }}">
+  <script src="/static/vendor/katex/katex.min.js" defer></script>
+  <script src="/static/vendor/mermaid.min.js" defer></script>
+  <script src="/static/course.js?v={{ version }}" defer></script>
+</head>
+<body class="print-page">
+  <p class="print-hint">This page is laid out for paper. Use your browser's Print command (Ctrl+P or ⌘P) and choose "Save as PDF" for a PDF. <a href="/courses/{{ c.id }}">Back to the course</a></p>
+  <header>
+    <p class="kicker">{{ c.lecture_title }} · {{ c.duration }}</p>
+    <h1>{{ c.title }}</h1>
+    <p class="lead">{{ c.overview }}</p>
+    <ol class="toc">{% for ch in c.chapters %}<li>{{ ch.title }} <span class="time">{{ ch.start | clock }}</span></li>{% endfor %}</ol>
+  </header>
+  {% for ch in c.chapters %}
+  <section class="chapter">
+    <p class="kicker">Chapter {{ ch.number }} · {{ ch.span }}</p>
+    <h2>{{ ch.title }}</h2>
+    <p class="lead">{{ ch.summary_html }}</p>
+    {% for s in ch.sections %}
+    <h3>{{ s.heading }}</h3>
+    {% if s.figure %}<figure><img src="/courses/{{ c.id }}/files/frames/{{ s.figure.frame }}.jpg" alt="The board at {{ s.figure.t | clock }}"><figcaption>The board at {{ s.figure.t | clock }}</figcaption></figure>{% endif %}
+    <ul>{% for p in s.points %}<li>{{ p.html }}{% if p.t is not none %} <span class="time">{{ p.t | clock }}</span>{% endif %}</li>{% endfor %}</ul>
+    {% endfor %}
+    {% if ch.key_terms %}<h3>Key terms</h3><dl>{% for k in ch.key_terms %}<dt>{{ k.term }}</dt><dd>{{ k.html }}</dd>{% endfor %}</dl>{% endif %}
+    {% for d in ch.diagrams %}
+    <figure class="diagram"><pre class="mermaid-source">{{ d.mermaid }}</pre><div class="mermaid-view"></div><figcaption>{{ d.title }}: {{ d.caption }}</figcaption></figure>
+    {% endfor %}
+  </section>
+  {% endfor %}
+  <section class="chapter">
+    <h2>Flashcards</h2>
+    <table class="cards"><thead><tr><th>Question</th><th>Answer</th></tr></thead><tbody>
+    {% for ch in c.chapters %}{% for f in ch.flashcards %}<tr><td>{{ f.front_html }}</td><td>{{ f.back_html }}</td></tr>{% endfor %}{% endfor %}
+    </tbody></table>
+  </section>
+  <section class="chapter">
+    <h2>Quiz</h2>
+    <ol class="quiz">
+    {% for ch in c.chapters %}{% for q in ch.quiz %}
+      <li>{{ q.question_html }}<ol type="A">{% for o in q.options_html %}<li>{{ o }}</li>{% endfor %}</ol></li>
+    {% endfor %}{% endfor %}
+    </ol>
+    <h3>Answers</h3>
+    <ol class="answers">
+    {% for ch in c.chapters %}{% for q in ch.quiz %}<li><strong>{{ "ABCD"[q.answer] }}.</strong> {{ q.explanation_html }}</li>{% endfor %}{% endfor %}
+    </ol>
+  </section>
+  <footer>Made with Engram · engram.devanshitiwari.com</footer>
+</body>
+</html>

@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/static/theme.css?v={{ version }}">
   <link rel="stylesheet" href="/static/engram.css?v={{ version }}">
   <script src="/static/htmx.min.js" defer></script>
+  {% block head %}{% endblock %}
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -48,7 +49,7 @@
       <a class="nav-action" href="/#upload">Upload a lecture</a>
     </div>
   </header>
-  <main id="main">
+  <main id="main"{% block main_attrs %}{% endblock %}>
     {% block content %}{% endblock %}
   </main>
 </body>

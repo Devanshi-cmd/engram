@@ -1,0 +1,31 @@
+/* The print view: the course on paper (or as a PDF), in the same type as the site. */
+:root { color-scheme: light; }
+body.print-page { max-width: 760px; margin: 0 auto; padding: 32px 24px; background: #ffffff; color: #1d1d1f; font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; }
+h1 { margin: 6px 0 10px; font-size: 34px; line-height: 1.1; letter-spacing: -0.03em; }
+h2 { margin: 0 0 6px; font-size: 24px; letter-spacing: -0.02em; }
+h3 { margin: 20px 0 6px; font-size: 17px; }
+.kicker { margin: 0; color: #0071e3; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.lead { color: #424245; }
+.time { color: #6e6e73; font-size: 12px; font-variant-numeric: tabular-nums; }
+.toc { color: #424245; }
+.chapter { margin-top: 32px; padding-top: 24px; border-top: 1px solid #e8e8ed; }
+figure { margin: 10px 0 14px; }
+figure img { max-width: 100%; border-radius: 8px; }
+figcaption { color: #6e6e73; font-size: 12px; }
+dt { font-weight: 600; }
+dd { margin: 0 0 8px; color: #424245; }
+.mermaid-source { white-space: pre-wrap; color: #6e6e73; font-size: 12px; }
+.diagram svg { display: block; max-width: 100%; height: auto; }
+.diagram:has(svg) .mermaid-source { display: none; }
+.cards { width: 100%; border-collapse: collapse; }
+.cards th, .cards td { padding: 8px 10px; border-bottom: 1px solid #e8e8ed; text-align: left; vertical-align: top; }
+.cards p, .quiz p { margin: 0; }
+.quiz > li { margin-bottom: 12px; }
+footer { margin-top: 40px; color: #6e6e73; font-size: 12px; }
+.print-hint { padding: 10px 14px; border-radius: 12px; background: #e8f1fc; color: #0066cc; font-size: 14px; }
+@media print {
+  .print-hint { display: none; }
+  body.print-page { padding: 0; font-size: 11pt; }
+  .chapter { break-before: page; border-top: 0; }
+  figure, .cards tr, .quiz > li { break-inside: avoid; }
+}

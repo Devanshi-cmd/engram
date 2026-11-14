@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
+from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
 
@@ -111,4 +113,49 @@ def extract_audio(video: Path, out: Path) -> None:
         ],
         timeout=1800,
     )
+    tmp.replace(out)
+
+
+def web_playable(video: Path) -> bool:
+    """True when every browser plays the file as it is: H.264 video and AAC audio in MP4."""
+    out = _run(
+        ["ffprobe", "-v", "error", "-print_format", "json", "-show_streams", "-show_format",
+         str(video)],
+        timeout=60,
+    )  # fmt: skip
+    data = json.loads(out.stdout)
+    codecs = {s.get("codec_type"): s.get("codec_name") for s in data.get("streams", [])}
+    container = str(data.get("format", {}).get("format_name", ""))
+    return (
+        codecs.get("video") == "h264"
+        and codecs.get("audio") in (None, "aac")
+        and ("mp4" in container)
+    )
+
+
+def make_web_copy(
+    video: Path, out: Path, duration: float, progress: Callable[[float], None] | None = None
+) -> None:
+    """H.264 (at most 720p) and AAC in a fast-start MP4: plays in every browser, seeks at once."""
+    tmp = out.with_name(f".{out.name}.part.mp4")
+    cmd = [
+        "ffmpeg", "-nostdin", "-y", "-v", "error", "-progress", "pipe:1", "-i", str(video),
+        "-map", "0:v:0", "-map", "0:a:0?", "-vf", "scale=-2:'min(720,ih)'",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-movflags", "+faststart", str(tmp),
+    ]  # fmt: skip
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    assert proc.stdout is not None
+    reported = 0.0
+    for line in proc.stdout:
+        if line.startswith("out_time_us=") and progress and duration > 0:
+            with contextlib.suppress(ValueError):
+                done = min(1.0, int(line.split("=", 1)[1]) / 1e6 / duration)
+                if done - reported >= 0.05:  # every 5%, not every half second
+                    progress(done)
+                    reported = done
+    error = proc.stderr.read() if proc.stderr else ""
+    if proc.wait() != 0:
+        tmp.unlink(missing_ok=True)
+        raise MediaError(f"ffmpeg couldn't make a web copy: {error.strip()[-200:]}")
     tmp.replace(out)

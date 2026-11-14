@@ -7,6 +7,7 @@
     <p class="home-hero-eyebrow">Lecture in. Course out.</p>
     <h1>Turn any lecture into a course, <span>with every note linked to the moment it was said.</span></h1>
     <p class="home-hero-lead">Engram listens to the talk, reads the slides and the whiteboard, and builds notes, diagrams, flashcards, a quiz and a narrated recap.</p>
+    {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
     {% if uploads_enabled %}
     <form class="home-form" method="post" action="/jobs" enctype="multipart/form-data">
       <label class="dropzone">
@@ -14,6 +15,10 @@
         <span class="dropzone-icon">{{ icon("upload") }}</span>
         <span class="dropzone-title">Choose a lecture video</span>
         <span class="dropzone-hint">or drop it here · MP4, MOV, MKV or WebM, up to 2 hours</span>
+      </label>
+      <label class="field">
+        <span class="sr-only">Title</span>
+        <input type="text" name="title" maxlength="120" placeholder="Title (optional), e.g. Linear regression · CS229 lecture 2">
       </label>
       <div class="home-form-row">
         <label class="field input-icon">

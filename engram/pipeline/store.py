@@ -65,6 +65,7 @@ class Job:
     status: JobStatus
     error: str | None
     created_at: float
+    listed: bool = False  # shown in the home page's sample courses
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,9 @@ class Store:
         with self._connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(_SCHEMA)
+            columns = {r["name"] for r in db.execute("PRAGMA table_info(jobs)")}
+            if "listed" not in columns:  # added in M6
+                db.execute("ALTER TABLE jobs ADD COLUMN listed INTEGER NOT NULL DEFAULT 0")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -112,7 +116,8 @@ class Store:
         job_id = uuid.uuid4().hex[:12]
         with self._connect() as db:
             db.execute(
-                "INSERT INTO jobs VALUES (?, ?, ?, ?, 'queued', NULL, ?, ?)",
+                "INSERT INTO jobs (id, title, source_path, source_sha, status, error, created_at,"
+                " updated_at) VALUES (?, ?, ?, ?, 'queued', NULL, ?, ?)",
                 (job_id, title, str(source_path), source_sha, now, now),
             )
         return self.job(job_id)
@@ -136,6 +141,25 @@ class Store:
         with self._connect() as db:
             rows = db.execute("SELECT * FROM jobs ORDER BY created_at DESC").fetchall()
         return [_job(r) for r in rows]
+
+    def next_queued(self) -> Job | None:
+        """The oldest job waiting for the worker."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1"
+            ).fetchone()
+        return _job(row) if row else None
+
+    def requeue_running(self) -> list[str]:
+        """Jobs a stopped worker left 'running' go back in the queue (they resume)."""
+        with self._connect() as db:
+            rows = db.execute("SELECT id FROM jobs WHERE status = 'running'").fetchall()
+            db.execute("UPDATE jobs SET status = 'queued' WHERE status = 'running'")
+        return [r["id"] for r in rows]
+
+    def set_listed(self, job_id: str, listed: bool) -> None:
+        with self._connect() as db:
+            db.execute("UPDATE jobs SET listed = ? WHERE id = ?", (int(listed), job_id))
 
     def set_job_status(self, job_id: str, status: JobStatus, error: str | None = None) -> None:
         with self._connect() as db:
@@ -197,6 +221,7 @@ def _job(row: sqlite3.Row) -> Job:
         status=row["status"],
         error=row["error"],
         created_at=row["created_at"],
+        listed=bool(row["listed"]),
     )
 
 
