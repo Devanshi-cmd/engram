@@ -1,0 +1,14 @@
+[Unit]
+Description=Engram web app
+After=network.target
+
+[Service]
+User=devdi
+WorkingDirectory=/home/devdi/lec_to_course
+ExecStart=/home/devdi/lec_to_course/.venv/bin/engram serve --host 127.0.0.1 --port 4810 --allowed-host engram.devanshitiwari.com --allowed-host 127.0.0.1 --allowed-host localhost
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

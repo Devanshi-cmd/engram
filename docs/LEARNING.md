@@ -106,3 +106,4 @@ Smaller lessons along the way:
 
 - **What:** engram.devanshitiwari.com points at this machine (165.99.53.30). nginx terminates TLS (Let's Encrypt via certbot) and proxies to `127.0.0.1:4810`. systemd runs the web app and the worker.
 - **Why:** The plan assumed a Cloudflare Tunnel, but this machine already has a public IP and serves DevSwarm exactly this way. Reusing a setup that already works means one less moving part. Uploads need `client_max_body_size` raised and generous proxy timeouts, which a tunnel would have limited anyway.
+- **Deployed early (after M2):** the site went live before the product was finished, so every milestone ships to the real URL and deployment problems surface early instead of on launch day. The upload form stays hidden until the worker exists.
