@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false}'>
+  <meta name="description" content="Upload a lecture video and get chaptered notes, diagrams, flashcards, a quiz and a narrated summary, each linked to the moment it came from.">
+  <title>{% block title %}Lectern{% endblock %}</title>
+  <script src="/static/site.js?v={{ version }}"></script>
+  <link rel="icon" href="/static/favicon.svg?v={{ version }}" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/theme.css?v={{ version }}">
+  <link rel="stylesheet" href="/static/lectern.css?v={{ version }}">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><text x="10.6" y="16" text-anchor="middle">le</text><circle cx="19.6" cy="14.4" r="1.6"/></svg></span>
+        Lectern
+      </a>
+      <nav aria-label="Main">
+        <a href="/#courses">Sample courses</a>
+        <details class="faq">
+          <summary>Help</summary>
+          <div class="faq-panel">
+            <h2>Questions</h2>
+            <dl>
+              <dt>What lectures work best?</dt>
+              <dd>English lectures up to two hours, with slides, a whiteboard, a blackboard or a tablet. Talking-head stretches are fine, they just add nothing to read.</dd>
+              <dt>Can it read handwriting?</dt>
+              <dd>Yes. Each frame is read together with what the lecturer was saying at that moment, which settles most messy handwriting. Anything it can't read is marked, not guessed.</dd>
+              <dt>How do I know the notes are right?</dt>
+              <dd>Every note, card and quiz answer links to the moment in the lecture it came from, so you can check it in one click.</dd>
+              <dt>Why do I need an access code?</dt>
+              <dd>Each lecture spends transcription and AI credits, so uploads are limited to people with a code. The sample courses are free to browse.</dd>
+            </dl>
+          </div>
+        </details>
+      </nav>
+      <button class="theme-switch" type="button" role="switch" aria-checked="false" aria-label="Night mode">
+        <span class="theme-knob" aria-hidden="true">
+          <svg class="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+        </span>
+      </button>
+      <a class="nav-action" href="/#upload">Upload a lecture</a>
+    </div>
+  </header>
+  <main id="main">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

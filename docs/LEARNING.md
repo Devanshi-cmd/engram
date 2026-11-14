@@ -22,3 +22,19 @@ Each entry records what was decided, why, and what else was considered.
 
 - **What:** Sample every 2 s at full resolution. Keep a frame on a dHash jump of at least 18 bits, every 60 s, and just before each change. Drop black frames. Use Tesseract text for backward consolidation. For whiteboards, add erase detection, a sharpness score and a penalty for frames where a person blocks the board.
 - **Why:** Recall's method is proven on screen recordings and slides (1117 → ~155 frames for 37 minutes). Whiteboards fill up gradually, so a hash threshold alone either keeps every stroke or misses the finished board.
+
+## DevSwarm's stylesheet, copied unchanged
+
+- **What:** `lectern/web/static/theme.css` is a byte-for-byte copy of DevSwarm's `dashboard.css`. Lectern's own components live in `lectern.css` and use only its tokens.
+- **Why:** The two products should look like one family. Never editing the copy means it can be refreshed from DevSwarm at any time, and a reviewer can confirm it matches with one `diff`.
+- **Alternatives:** Porting the tokens into a new stylesheet (it would drift), or a shared package (too much machinery for two apps).
+
+## Upload form hidden until the pipeline exists
+
+- **What:** The home page shows the upload form only when `accept_uploads` is on *and* at least one access code is set.
+- **Why:** A showcase should never offer a button that leads nowhere. Until M6, it says plainly that uploads are off and points to the sample courses.
+
+## Port 4810
+
+- **What:** `lectern serve` defaults to `127.0.0.1:4810`.
+- **Why:** Port 4700 is already in use on the host machine. Binding to localhost only means the Cloudflare Tunnel (M8) is the single public way in.

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "_icon.html" import icon, output_tile %}
+{% block title %}Lectern · Turn a lecture into a course{% endblock %}
+{% block content %}
+<section class="card home-hero" id="upload">
+  <div class="home-hero-copy">
+    <p class="home-hero-eyebrow">Lecture in. Course out.</p>
+    <h1>Turn any lecture into a course, <span>with every note linked to the moment it was said.</span></h1>
+    <p class="home-hero-lead">Lectern listens to the talk, reads the slides and the whiteboard, and builds notes, diagrams, flashcards, a quiz and a narrated recap.</p>
+    {% if uploads_enabled %}
+    <form class="home-form" method="post" action="/jobs" enctype="multipart/form-data">
+      <label class="dropzone">
+        <input class="dropzone-input" type="file" name="video" accept="video/*" required>
+        <span class="dropzone-icon">{{ icon("upload") }}</span>
+        <span class="dropzone-title">Choose a lecture video</span>
+        <span class="dropzone-hint">or drop it here · MP4, MOV, MKV or WebM, up to 2 hours</span>
+      </label>
+      <div class="home-form-row">
+        <label class="field input-icon">
+          <span class="sr-only">Access code</span>
+          {{ icon("key") }}
+          <input type="password" name="access_code" required autocomplete="off" placeholder="Access code">
+        </label>
+        <button type="submit">Build the course {{ icon("arrow") }}</button>
+      </div>
+    </form>
+    {% else %}
+    <p class="note">Uploads are turned off on this server. The sample courses below show what a lecture becomes.</p>
+    {% endif %}
+  </div>
+
+  <div class="showcase" aria-hidden="true">
+    <div class="showcase-card outputs-card">
+      <div class="showcase-head"><span>One lecture becomes</span></div>
+      <ul class="showcase-steps">
+        {% for key, label, _ in outputs %}
+        <li>{{ output_tile(key) }}<span class="showcase-agent">{{ label }}</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="run-section" aria-labelledby="outputs-title">
+  <h2 class="section-title" id="outputs-title">Everything a student needs, <span class="muted">from one video.</span></h2>
+  <div class="output-grid">
+    {% for key, label, blurb in outputs %}
+    <article class="bento-card output-card">
+      {{ output_tile(key) }}
+      <h3>{{ label }}</h3>
+      <p class="muted">{{ blurb }}</p>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="run-section" id="courses" aria-labelledby="courses-title">
+  <h2 class="section-title" id="courses-title">Sample courses</h2>
+  {% if courses %}
+  <div class="course-grid">
+    {% for course in courses %}
+    <a class="bento-card course-card" href="/courses/{{ course.id }}">
+      <span class="course-title">{{ course.title }}</span>
+      <span class="muted">{{ course.summary }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card empty">
+    <p><strong>No courses yet.</strong></p>
+    <p class="muted">Finished lectures appear here, ready to browse.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
