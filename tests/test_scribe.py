@@ -131,3 +131,19 @@ def test_minutes_left_from_the_subscription() -> None:
 def test_minutes_left_never_raises() -> None:
     assert scribe(lambda _: httpx.Response(500)).minutes_left() is None
     assert scribe(lambda _: httpx.Response(200, json={})).minutes_left() is None
+
+
+def test_fillers_after_a_long_pause_join_the_next_sentence() -> None:
+    # CS229 at 25:01: "um," … "which is" … "called the learning rate."
+    segs = to_segments(
+        words(
+            ("um,", 61.0, 61.3),
+            ("which", 64.0, 64.2),
+            ("is", 64.3, 64.4),
+            ("called", 67.0, 67.3),
+            ("the", 67.4, 67.5),
+            ("learning", 67.6, 67.9),
+            ("rate.", 68.0, 69.0),
+        )
+    )
+    assert [s.text for s in segs] == ["um, which is called the learning rate."]

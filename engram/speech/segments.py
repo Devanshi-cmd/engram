@@ -8,7 +8,8 @@ from engram.speech.models import Segment, Word
 
 MAX_SECONDS = 15.0  # a segment never runs longer than this
 PAUSE_SECONDS = 1.0  # a silence this long ends a segment...
-MIN_WORDS = 4  # ...unless the segment so far is a fragment like "so then"
+MIN_WORDS = 4  # ...unless the segment so far is a fragment like "um, which is"
+FRAGMENT_PAUSE_SECONDS = 5.0  # a fragment waits this long for the rest of its sentence
 _SENTENCE_END = re.compile(r"[.?!]$")
 
 
@@ -34,7 +35,7 @@ def to_segments(words: list[Word]) -> list[Segment]:
     for word in words:
         if current:
             pause = word.start - current[-1].end
-            fragment = len(current) < MIN_WORDS and pause <= 2 * PAUSE_SECONDS
+            fragment = len(current) < MIN_WORDS and pause <= FRAGMENT_PAUSE_SECONDS
             too_long = word.end - current[0].start > MAX_SECONDS
             if (pause > PAUSE_SECONDS and not fragment) or too_long:
                 flush()

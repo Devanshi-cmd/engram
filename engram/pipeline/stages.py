@@ -83,6 +83,7 @@ STAGES: list[Stage] = [
         _transcribe,
         deps=("audio",),
         outputs=("transcript.json",),
+        version=2,  # v2: filler fragments wait up to 5 s for the rest of their sentence
         params=lambda s: {"by": s.transcriber.name},
     ),
 ]

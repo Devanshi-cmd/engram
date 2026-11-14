@@ -69,3 +69,8 @@ Each entry records what was decided, why, and what else was considered.
 
 - **What:** `EngramError` subclasses carry a sentence for the job page ("This file has no audio stream. Engram needs to hear the lecture."). ffmpeg failures quote the tool's own last stderr line. Everything else is shown as `Type: message`, with the traceback in the job's `engram.log`.
 - **Why:** Recall's lesson: a person retrying a job needs one line that says what went wrong, not a stack trace.
+
+## Filler fragments wait for their sentence
+
+- **What:** A segment of fewer than 4 words doesn't end at a pause of up to 5 s. It waits for the rest of its sentence. (Recall used 2 s.)
+- **Why:** On the full CS229 lecture, a lecturer thinking at the board produced segments like "um," and "which is" on their own. With a 5 s wait, 689 segments became 674, and "um, which is called the learning rate." reads as one line. Re-segmenting reused the paid transcript and took 0.2 s.
