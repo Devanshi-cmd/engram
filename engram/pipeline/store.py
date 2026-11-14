@@ -1,0 +1,216 @@
+"""SQLite record of jobs, their stages and progress events. Artifacts live on disk.
+
+Every call opens its own short-lived connection, so stages running in worker threads and
+the web app's read-only pages can use the store at the same time (WAL mode).
+"""
+
+from __future__ import annotations
+
+import sqlite3
+import time
+import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Literal
+
+JobStatus = Literal["queued", "running", "done", "failed"]
+StageStatus = Literal["pending", "running", "done", "failed", "blocked"]
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS jobs (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  source_path TEXT NOT NULL,
+  source_sha TEXT NOT NULL,
+  status TEXT NOT NULL,
+  error TEXT,
+  created_at REAL NOT NULL,
+  updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS jobs_by_source ON jobs(source_sha);
+CREATE TABLE IF NOT EXISTS stages (
+  job_id TEXT NOT NULL REFERENCES jobs(id),
+  name TEXT NOT NULL,
+  status TEXT NOT NULL,
+  input_key TEXT,
+  output_digest TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  started_at REAL,
+  finished_at REAL,
+  detail TEXT,
+  error TEXT,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  cached INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (job_id, name)
+);
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL REFERENCES jobs(id),
+  stage TEXT,
+  at REAL NOT NULL,
+  message TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS events_by_job ON events(job_id, id);
+"""
+
+
+@dataclass(frozen=True)
+class Job:
+    id: str
+    title: str
+    source_path: Path
+    source_sha: str
+    status: JobStatus
+    error: str | None
+    created_at: float
+
+
+@dataclass(frozen=True)
+class StageRow:
+    name: str
+    status: StageStatus
+    input_key: str | None
+    output_digest: str | None
+    attempts: int
+    started_at: float | None
+    finished_at: float | None
+    detail: str | None
+    error: str | None
+    cost_usd: float
+    cached: bool
+
+    @property
+    def seconds(self) -> float | None:
+        if self.started_at is None or self.finished_at is None:
+            return None
+        return self.finished_at - self.started_at
+
+
+class Store:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with self._connect() as db:
+            db.execute("PRAGMA journal_mode=WAL")
+            db.executescript(_SCHEMA)
+
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        db = sqlite3.connect(self.path, timeout=30)
+        db.row_factory = sqlite3.Row
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
+
+    # ---- jobs ------------------------------------------------------------
+    def create_job(self, title: str, source_path: Path, source_sha: str) -> Job:
+        now = time.time()
+        job_id = uuid.uuid4().hex[:12]
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO jobs VALUES (?, ?, ?, ?, 'queued', NULL, ?, ?)",
+                (job_id, title, str(source_path), source_sha, now, now),
+            )
+        return self.job(job_id)
+
+    def job(self, job_id: str) -> Job:
+        with self._connect() as db:
+            row = db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if row is None:
+            raise KeyError(job_id)
+        return _job(row)
+
+    def find_by_source(self, source_sha: str) -> Job | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM jobs WHERE source_sha = ? ORDER BY created_at DESC LIMIT 1",
+                (source_sha,),
+            ).fetchone()
+        return _job(row) if row else None
+
+    def jobs(self) -> list[Job]:
+        with self._connect() as db:
+            rows = db.execute("SELECT * FROM jobs ORDER BY created_at DESC").fetchall()
+        return [_job(r) for r in rows]
+
+    def set_job_status(self, job_id: str, status: JobStatus, error: str | None = None) -> None:
+        with self._connect() as db:
+            db.execute(
+                "UPDATE jobs SET status = ?, error = ?, updated_at = ? WHERE id = ?",
+                (status, error, time.time(), job_id),
+            )
+
+    # ---- stages ----------------------------------------------------------
+    def stages(self, job_id: str) -> dict[str, StageRow]:
+        with self._connect() as db:
+            rows = db.execute("SELECT * FROM stages WHERE job_id = ?", (job_id,)).fetchall()
+        return {r["name"]: _stage(r) for r in rows}
+
+    def update_stage(self, job_id: str, name: str, **fields: Any) -> None:
+        if not fields:
+            return
+        with self._connect() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO stages (job_id, name, status) VALUES (?, ?, 'pending')",
+                (job_id, name),
+            )
+            assignments = ", ".join(f"{k} = ?" for k in fields)
+            db.execute(
+                f"UPDATE stages SET {assignments} WHERE job_id = ? AND name = ?",  # noqa: S608
+                (*fields.values(), job_id, name),
+            )
+
+    def add_cost(self, job_id: str, name: str, usd: float) -> None:
+        with self._connect() as db:
+            db.execute(
+                "UPDATE stages SET cost_usd = cost_usd + ? WHERE job_id = ? AND name = ?",
+                (usd, job_id, name),
+            )
+
+    # ---- events ----------------------------------------------------------
+    def add_event(self, job_id: str, stage: str | None, message: str) -> None:
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO events (job_id, stage, at, message) VALUES (?, ?, ?, ?)",
+                (job_id, stage, time.time(), message),
+            )
+
+    def events(self, job_id: str, after_id: int = 0) -> list[tuple[int, str | None, float, str]]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id, stage, at, message FROM events WHERE job_id = ? AND id > ? ORDER BY id",
+                (job_id, after_id),
+            ).fetchall()
+        return [(r["id"], r["stage"], r["at"], r["message"]) for r in rows]
+
+
+def _job(row: sqlite3.Row) -> Job:
+    return Job(
+        id=row["id"],
+        title=row["title"],
+        source_path=Path(row["source_path"]),
+        source_sha=row["source_sha"],
+        status=row["status"],
+        error=row["error"],
+        created_at=row["created_at"],
+    )
+
+
+def _stage(row: sqlite3.Row) -> StageRow:
+    return StageRow(
+        name=row["name"],
+        status=row["status"],
+        input_key=row["input_key"],
+        output_digest=row["output_digest"],
+        attempts=row["attempts"],
+        started_at=row["started_at"],
+        finished_at=row["finished_at"],
+        detail=row["detail"],
+        error=row["error"],
+        cost_usd=row["cost_usd"],
+        cached=bool(row["cached"]),
+    )

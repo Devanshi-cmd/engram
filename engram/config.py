@@ -31,6 +31,7 @@ class Settings:
     elevenlabs_voice_id: str | None = None
     anthropic_api_key: str | None = None
     access_codes: frozenset[str] = field(default_factory=frozenset)
+    max_minutes: int = 120
 
     @property
     def uploads_enabled(self) -> bool:
@@ -47,4 +48,5 @@ def load_settings(env_file: Path | None = ROOT / ".env") -> Settings:
         elevenlabs_voice_id=_env("ELEVENLABS_VOICE_ID"),
         anthropic_api_key=_env("ANTHROPIC_API_KEY"),
         access_codes=frozenset(c.strip() for c in codes.split(",") if c.strip()),
+        max_minutes=int(os.environ.get("ENGRAM_MAX_MINUTES", "120")),
     )

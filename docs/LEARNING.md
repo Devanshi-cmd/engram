@@ -43,3 +43,29 @@ Each entry records what was decided, why, and what else was considered.
 
 - **What:** The project was called Lectern while it was planned, and renamed Engram before M1.
 - **Why:** An engram is the physical trace a memory leaves in the brain, which is what the product makes from a lecture. It's one short word and easy to say. Other projects use the name (DeepSeek's Engram memory architecture, and an agent-memory tool), so on GitHub it is always shown with the owner, `Devanshi-cmd/engram`. The package is never published to PyPI, where `engram` is already taken.
+
+## M1: a content-hashed stage DAG instead of "skip if the file exists"
+
+- **What:** Each stage's cache key hashes its name, version, parameters, the source video, and the output digests of its dependencies. A stage is skipped only if the key matches *and* its outputs still hash the same.
+- **Why:** Recall skips a step when its output file exists. That's simple, but a prompt change or an edited file is silently ignored, and the only way to redo a step is a manual `--force`. Hashing makes the cache correct by construction. Bumping a stage's version re-runs exactly that stage, and downstream stages re-run only if its output bytes really changed.
+- **Alternatives:** A workflow engine (Prefect, Dagster, Celery). That's heavy machinery for one worker on one machine, and it would hide the part worth showing in an interview.
+
+## Paid results cached across jobs
+
+- **What:** Transcripts are stored by the hash of the audio bytes, the transcriber and the key terms, outside any job folder.
+- **Why:** Scribe isn't deterministic (two runs on the same 6-minute clip gave 742 and 740 words), and every call costs credits. Re-uploading a lecture, or deleting a job, should never pay twice.
+
+## Bit-exact audio extraction
+
+- **What:** `ffmpeg -map_metadata -1 -fflags +bitexact -flags:a +bitexact`.
+- **Why:** Found in the M1 demo. A re-muxed copy of a lecture carried a `comment` tag, ffmpeg copied it into the MP3, the audio hash changed, and Scribe was paid again for identical speech. Without tags and with a bit-exact encode, the same speech always gives the same bytes. A test re-tags a video and checks the audio hash doesn't change.
+
+## A short-lived SQLite connection per call
+
+- **What:** `Store` opens a connection per operation, in WAL mode with a 30 s busy timeout.
+- **Why:** Stages run in threads, and the web app will read while the worker writes. A shared connection needs locking; per-call connections in WAL mode give concurrent readers and serialised writers for free. The overhead (well under a millisecond) is nothing next to ffmpeg or an API call.
+
+## Readable errors, full tracebacks on disk
+
+- **What:** `EngramError` subclasses carry a sentence for the job page ("This file has no audio stream. Engram needs to hear the lecture."). ffmpeg failures quote the tool's own last stderr line. Everything else is shown as `Type: message`, with the traceback in the job's `engram.log`.
+- **Why:** Recall's lesson: a person retrying a job needs one line that says what went wrong, not a stack trace.
