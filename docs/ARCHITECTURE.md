@@ -5,15 +5,15 @@ This document grows with each milestone. It describes what exists today, not the
 ## Code layout
 
 ```
-lectern/
+engram/
   config.py       Settings from the environment and .env. Placeholder values count as unset.
-  cli.py          `lectern serve`, `lectern version`
+  cli.py          `engram serve`, `engram version`
   web/
     app.py        FastAPI app factory: routes, security headers, themed error pages
     templates/    Jinja pages. base.html holds the header, the Help popover and the theme switch
     static/
       theme.css   DevSwarm's stylesheet, copied unchanged: tokens, header, cards, buttons, dark mode
-      lectern.css Lectern-only components, built from theme.css tokens only
+      engram.css  Engram-only components, built from theme.css tokens only
       site.js     Theme switch (remembered in localStorage), Help popover, upload drop zone
       htmx.min.js Partial page refreshes for live job progress
 ```
@@ -27,4 +27,4 @@ lectern/
 
 ## Theme
 
-The look is DevSwarm's: Apple's palette (`#f5f5f7` page, `#1d1d1f` ink, `#0071e3` action), the system font stack, a frosted sticky header, 22px card radius, pill buttons, and a sun/moon switch for night mode. Light is the default. `theme.css` is never edited, so the two products stay identical. Anything new goes in `lectern.css` and uses only `var(--…)` tokens.
+The look is DevSwarm's: Apple's palette (`#f5f5f7` page, `#1d1d1f` ink, `#0071e3` action), the system font stack, a frosted sticky header, 22px card radius, pill buttons, and a sun/moon switch for night mode. Light is the default. `theme.css` is never edited, so the two products stay identical. Anything new goes in `engram.css` and uses only `var(--…)` tokens.

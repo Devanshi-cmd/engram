@@ -25,7 +25,7 @@ Each entry records what was decided, why, and what else was considered.
 
 ## DevSwarm's stylesheet, copied unchanged
 
-- **What:** `lectern/web/static/theme.css` is a byte-for-byte copy of DevSwarm's `dashboard.css`. Lectern's own components live in `lectern.css` and use only its tokens.
+- **What:** `engram/web/static/theme.css` is a byte-for-byte copy of DevSwarm's `dashboard.css`. Engram's own components live in `engram.css` and use only its tokens.
 - **Why:** The two products should look like one family. Never editing the copy means it can be refreshed from DevSwarm at any time, and a reviewer can confirm it matches with one `diff`.
 - **Alternatives:** Porting the tokens into a new stylesheet (it would drift), or a shared package (too much machinery for two apps).
 
@@ -36,5 +36,10 @@ Each entry records what was decided, why, and what else was considered.
 
 ## Port 4810
 
-- **What:** `lectern serve` defaults to `127.0.0.1:4810`.
+- **What:** `engram serve` defaults to `127.0.0.1:4810`.
 - **Why:** Port 4700 is already in use on the host machine. Binding to localhost only means the Cloudflare Tunnel (M8) is the single public way in.
+
+## The name: Engram
+
+- **What:** The project was called Lectern while it was planned, and renamed Engram before M1.
+- **Why:** An engram is the physical trace a memory leaves in the brain, which is what the product makes from a lecture. It's one short word and easy to say. Other projects use the name (DeepSeek's Engram memory architecture, and an agent-memory tool), so on GitHub it is always shown with the owner, `Devanshi-cmd/engram`. The package is never published to PyPI, where `engram` is already taken.

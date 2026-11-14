@@ -2,8 +2,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from lectern.config import Settings
-from lectern.web.app import OUTPUTS, SECURITY_HEADERS, create_app
+from engram.config import Settings
+from engram.web.app import OUTPUTS, SECURITY_HEADERS, create_app
 
 
 def client(
@@ -40,7 +40,7 @@ def test_every_response_carries_the_security_headers(tmp_path: Path) -> None:
 def test_unknown_page_uses_the_themed_error_page(tmp_path: Path) -> None:
     response = client(tmp_path).get("/no-such-page")
     assert response.status_code == 404
-    assert "Not Found." in response.text and "Back to Lectern" in response.text
+    assert "Not Found." in response.text and "Back to Engram" in response.text
 
 
 def test_unknown_host_is_rejected(tmp_path: Path) -> None:
@@ -50,5 +50,5 @@ def test_unknown_host_is_rejected(tmp_path: Path) -> None:
 
 def test_static_assets_exist(tmp_path: Path) -> None:
     c = client(tmp_path)
-    for asset in ("theme.css", "lectern.css", "site.js", "htmx.min.js", "favicon.svg"):
+    for asset in ("theme.css", "engram.css", "site.js", "htmx.min.js", "favicon.svg"):
         assert c.get(f"/static/{asset}").status_code == 200, asset

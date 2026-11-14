@@ -1,5 +1,5 @@
 [project]
-name = "lectern"
+name = "engram"
 version = "0.1.0"
 description = "Multimodal lecture-to-course generator: a lecture video in, notes, diagrams, flashcards, a quiz and a narrated summary out."
 authors = [{ name = "Devanshi", email = "198542797+Devanshi-cmd@users.noreply.github.com" }]
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-lectern = "lectern.cli:app"
+engram = "engram.cli:app"
 
 [dependency-groups]
 dev = [
@@ -30,7 +30,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["lectern"]
+packages = ["engram"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,7 +1,7 @@
 """Settings read from the environment, with `.env` in the project root as a fallback.
 
 Secrets stay here and are passed only to the client that needs them. The Claude Code
-subprocess never receives them (see `lectern.llm`).
+subprocess never receives them (see `engram.llm`).
 """
 
 from __future__ import annotations
@@ -40,9 +40,9 @@ class Settings:
 def load_settings(env_file: Path | None = ROOT / ".env") -> Settings:
     if env_file is not None:
         load_dotenv(env_file, override=False)
-    codes = _env("LECTERN_ACCESS_CODES") or ""
+    codes = _env("ENGRAM_ACCESS_CODES") or ""
     return Settings(
-        data_dir=Path(os.environ.get("LECTERN_DATA_DIR", ROOT / ".data")),
+        data_dir=Path(os.environ.get("ENGRAM_DATA_DIR", ROOT / ".data")),
         elevenlabs_api_key=_env("ELEVENLABS_API_KEY"),
         elevenlabs_voice_id=_env("ELEVENLABS_VOICE_ID"),
         anthropic_api_key=_env("ANTHROPIC_API_KEY"),

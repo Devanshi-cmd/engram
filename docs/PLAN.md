@@ -1,6 +1,6 @@
-# Lectern: build plan
+# Engram: build plan
 
-> Working name **Lectern**, which is easy to change. Upload a lecture video and get back a course:
+> **Engram**: the trace a memory leaves in the brain. Upload a lecture video and get back a course:
 > chaptered notes, diagrams, flashcards, a quiz and a 60–90 second AI-narrated summary video.
 > Every item links back to the exact moment in the lecture it came from.
 
@@ -34,7 +34,7 @@
 
 ### 2.1 Taken from Recall (`/root/Projects/recall`), measured there on 1-hour lectures
 
-| Recall finding | How Lectern uses it |
+| Recall finding | How Engram uses it |
 |---|---|
 | Haiku vs Opus describing 156 frames: Haiku 69 s and about $0.15. Opus about 3 min and 633k input tokens (about $5.90 at API prices). Opus explained diagrams better, while Haiku copied text a little more faithfully. | Haiku reads every frame. Opus explains, but only the frames it uses. |
 | Opus fed 10 frames per session wrote "same as the previous frame" in 15 of 156 descriptions | One frame per Haiku call. Opus never describes frames in bulk. |
@@ -79,7 +79,7 @@ flowchart LR
 
 1. **Probe and normalise.** ffprobe validates the container, duration (cap 120 min) and streams. A lecture with no video stream is rejected early, with a clear message. A video with variable frame rate is normalised so frame timestamps are trustworthy.
 2. **Audio.** Extract mono 16 kHz audio. Scribe takes long files directly. If a file is over the API limit, split it on silence (from `silencedetect`) with a 2-second overlap, then stitch the words back together on the overlap. Results are cached by audio hash.
-3. **Keyframes** (hard part #1, the visual side). The base is Recall's method: sample every 2 s at full resolution, keep a frame when its 16×16 dHash moves ≥ 18 bits or 60 s have passed, also keep the frame just before each change, drop near-black frames, then run Tesseract and consolidate backwards. Lectern adds:
+3. **Keyframes** (hard part #1, the visual side). The base is Recall's method: sample every 2 s at full resolution, keep a frame when its 16×16 dHash moves ≥ 18 bits or 60 s have passed, also keep the frame just before each change, drop near-black frames, then run Tesseract and consolidate backwards. Engram adds:
    - Compute change on a 320 px greyscale copy (mean absolute difference plus SSIM on a grid), which separates the two kinds of change below.
    - *Slides* change in steps, so a sharp spike marks a boundary.
    - *Whiteboards* change gradually, so a boundary is an erase (a drop in ink pixels) or a pan. Within each stable window, pick the **most complete and sharpest** frame: the most ink plus the highest Laplacian variance, with frames where a person blocks the board (large foreground blob) penalised.
@@ -121,7 +121,7 @@ The theme comes from DevSwarm's `dashboard.css`: its tokens (`--page`, `--surfac
 ## 5. Code layout
 
 ```
-lectern/
+engram/
   config.py            settings from env (.env), limits
   media/               ffprobe, ffmpeg wrappers, frame sampling
   vision/              keyframe detection, dedupe, sharpness, occlusion
@@ -134,7 +134,7 @@ lectern/
   render/              summary video composition, title cards, captions
   export/              markdown zip, anki, print
   web/                 FastAPI app, templates, static (theme)
-  cli.py               `lectern run video.mp4`, `lectern serve`, `lectern eval`
+  cli.py               `engram run video.mp4`, `engram serve`, `engram eval`
 tests/                 offline, synthetic videos generated in fixtures
 evals/                 labelled samples + metrics
 docs/                  PLAN, ARCHITECTURE, HOW_IT_WORKS, LEARNING, DEMO
@@ -146,14 +146,14 @@ Each milestone ends with: tests green, a demo, docs updated, a commit, and a che
 
 | # | Milestone | Demo at the end |
 |---|---|---|
-| **M0** | Scaffolding: uv project, ruff/mypy/pytest, CI, the DevSwarm theme ported into an empty app shell, docs skeleton | `lectern serve` shows the themed shell in light and dark |
-| **M1** | Pipeline core (stage DAG, content-hash cache, SQLite, events, resume) + probe/audio + Scribe transcription | `lectern run talk.mp4` → `transcript.json`. Killing it and re-running resumes |
+| **M0** | Scaffolding: uv project, ruff/mypy/pytest, CI, the DevSwarm theme ported into an empty app shell, docs skeleton | `engram serve` shows the themed shell in light and dark |
+| **M1** | Pipeline core (stage DAG, content-hash cache, SQLite, events, resume) + probe/audio + Scribe transcription | `engram run talk.mp4` → `transcript.json`. Killing it and re-running resumes |
 | **M2** | Keyframe detection + alignment, tested on synthetic slide and whiteboard videos rendered in fixtures | A contact sheet of the detected keyframes with their time ranges |
 | **M3** | Haiku frame reader (API, plus the `claude -p` fallback) with spoken context, flags, compact timeline, and the Opus Claude Code backend (env stripped, `--json-schema`, Read-only) | Frame-by-frame JSON and `timeline.md` for a real whiteboard lecture, with the cost shown |
 | **M4** | Chapters, notes, Mermaid diagrams, flashcards, quiz + grounding check | Complete course JSON + Markdown |
 | **M5** | Summary video: script → TTS → ffmpeg composition, landscape and portrait | A playable `summary.mp4` |
 | **M6** | Web app: upload, live job page, course page with synced player/transcript, flashcards, quiz, exports | The full flow in the browser |
-| **M7** | Evals: keyframe recall, handwriting CER, quiz grounding rate. Hardening: limits, errors, empty states, mobile | `lectern eval` report. The numbers go in the README |
+| **M7** | Evals: keyframe recall, handwriting CER, quiz grounding rate. Hardening: limits, errors, empty states, mobile | `engram eval` report. The numbers go in the README |
 | **M8** | Launch: access codes + queue + daily limits, Cloudflare Tunnel, sample gallery, How-it-works page, README with GIFs, LinkedIn assets | A live URL |
 
 ## 7. Risks
@@ -172,5 +172,5 @@ Each milestone ends with: tests green, a demo, docs updated, a commit, and a che
 
 - `ELEVENLABS_API_KEY` in `.env` (needed from M1).
 - `ANTHROPIC_API_KEY` in `.env`, used **only** by the Haiku frame reader (needed from M3). Opus runs on the plan.
-- The DNS subdomain for the Tunnel (M8), e.g. `lectern.devanshitiwari.com`.
+- The DNS subdomain for the Tunnel (M8), e.g. `engram.devanshitiwari.com`.
 - Approval of 2–3 sample lectures (M7). I'll propose MIT OCW picks: one slides, one blackboard, one handwritten tablet.

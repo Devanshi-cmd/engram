@@ -13,8 +13,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from lectern import __version__
-from lectern.config import Settings
+from engram import __version__
+from engram.config import Settings
 
 _PACKAGE = Path(__file__).parent
 
@@ -49,7 +49,7 @@ def create_app(
 ) -> FastAPI:
     """`accept_uploads` stays off until the processing pipeline is wired in, so the form
     never offers something the server can't do."""
-    app = FastAPI(title="Lectern", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Engram", docs_url=None, redoc_url=None, openapi_url=None)
     # Rejecting unknown Host headers stops a malicious site reading the app via DNS rebinding.
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
     app.mount("/static", StaticFiles(directory=_PACKAGE / "static"), name="static")

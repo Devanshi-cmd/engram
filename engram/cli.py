@@ -1,10 +1,10 @@
-"""Command line: `lectern serve` runs the web app."""
+"""Command line: `engram serve` runs the web app."""
 
 from __future__ import annotations
 
 import typer
 
-from lectern import __version__
+from engram import __version__
 
 app = typer.Typer(
     add_completion=False, no_args_is_help=True, help="A lecture video in, a course out."
@@ -22,8 +22,8 @@ def serve(
     """Run the web app."""
     import uvicorn
 
-    from lectern.config import load_settings
-    from lectern.web.app import create_app
+    from engram.config import load_settings
+    from engram.web.app import create_app
 
     uvicorn.run(create_app(load_settings(), allowed_hosts=allowed_host), host=host, port=port)
 

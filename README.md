@@ -1,8 +1,10 @@
-# Lectern
+# Engram
+
+*An engram is the physical trace a memory leaves in the brain. Engram leaves one for every lecture.*
 
 **Upload a lecture video and get a course back:** chaptered notes, diagrams, flashcards, a quiz and a 90-second narrated summary video. Every item links to the moment in the lecture it came from.
 
-Lectern listens to the talk, reads the slides and the whiteboard from the video frames (handwriting included), and lines the two up in time. The words spoken while a frame was on screen help it read that frame, and every note can cite exactly where it came from.
+Engram listens to the talk, reads the slides and the whiteboard from the video frames (handwriting included), and lines the two up in time. The words spoken while a frame was on screen help it read that frame, and every note can cite exactly where it came from.
 
 > Status: in development. The build plan is in [docs/PLAN.md](docs/PLAN.md).
 
@@ -32,14 +34,14 @@ You need Python 3.12, [uv](https://docs.astral.sh/uv/), ffmpeg, and the [Claude 
 ```bash
 cp .env.example .env      # add your ElevenLabs and Anthropic keys
 uv sync
-uv run lectern serve      # http://127.0.0.1:4810
+uv run engram serve      # http://127.0.0.1:4810
 ```
 
 ## Development
 
 ```bash
 uv run pytest             # offline and free: fake speech, voice and LLM backends
-uv run ruff check . && uv run mypy lectern tests
+uv run ruff check . && uv run mypy engram tests
 ```
 
 | Doc | What's in it |

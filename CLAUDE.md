@@ -1,4 +1,4 @@
-# Lectern project notes
+# Engram project notes
 
 ## VERY IMPORTANT: commit attribution
 

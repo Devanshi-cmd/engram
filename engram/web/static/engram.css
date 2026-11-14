@@ -1,4 +1,4 @@
-/* Lectern's own components. theme.css is DevSwarm's stylesheet, unchanged; everything here
+/* Engram's own components. theme.css is DevSwarm's stylesheet, unchanged; everything here
    is built only from its tokens (colours, --radius, --pill, --shadow), so nothing drifts. */
 
 .skip-link { position: absolute; top: -100px; left: 16px; z-index: 30; padding: 8px 16px; border-radius: var(--pill); background: var(--action); color: #ffffff; }
