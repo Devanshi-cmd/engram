@@ -37,7 +37,7 @@ Each entry records what was decided, why, and what else was considered.
 ## Port 4810
 
 - **What:** `engram serve` defaults to `127.0.0.1:4810`.
-- **Why:** Port 4700 is already in use on the host machine. Binding to localhost only means the Cloudflare Tunnel (M8) is the single public way in.
+- **Why:** Port 4700 is already in use on the host machine. Binding to localhost only means nginx (M8) is the single public way in.
 
 ## The name: Engram
 
@@ -101,3 +101,8 @@ Smaller lessons along the way:
 
 - **What:** Views tile the lecture with no gaps, and each word belongs to the view containing its midpoint.
 - **Why:** A word straddling a cut belongs where most of it was said, and there are no unassigned words. On CS229, the span for the gradient-descent frame (24:51–25:33) holds the exact sentence describing what's on the board: "theta J minus alpha … the learning rate … the partial derivative of the cost function J of theta with respect to theta J".
+
+## Hosting: nginx on the same server as DevSwarm, not a tunnel
+
+- **What:** engram.devanshitiwari.com points at this machine (165.99.53.30). nginx terminates TLS (Let's Encrypt via certbot) and proxies to `127.0.0.1:4810`. systemd runs the web app and the worker.
+- **Why:** The plan assumed a Cloudflare Tunnel, but this machine already has a public IP and serves DevSwarm exactly this way. Reusing a setup that already works means one less moving part. Uploads need `client_max_body_size` raised and generous proxy timeouts, which a tunnel would have limited anyway.

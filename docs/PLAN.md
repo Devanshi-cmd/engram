@@ -29,7 +29,7 @@
 | Media | ffmpeg / ffprobe via subprocess (argument lists, never a shell string) | The standard tools, and it's how DevSwarm calls Docker too. |
 | Web | FastAPI + Jinja + HTMX + small vanilla JS, reusing DevSwarm's `dashboard.css` | Same theme pixel for pixel and one Python codebase. |
 | State | SQLite (WAL) for jobs and stages, files on disk for artifacts | Resumable, inspectable and has nothing to operate. |
-| Hosting | This machine behind a Cloudflare Tunnel. Free public gallery of sample lectures, plus uploads gated by access code with a queue and daily limits | Claude Code only runs here, so access codes keep usage bounded. |
+| Hosting | **engram.devanshitiwari.com** on this machine (165.99.53.30), set up like DevSwarm: nginx reverse proxy to `127.0.0.1:4810`, a Let's Encrypt certificate via certbot, and systemd units for the web app and the worker. Free public gallery of sample lectures, plus uploads gated by access code with a queue and daily limits | Claude Code only runs here, so access codes keep usage bounded. This is the same proven setup DevSwarm already runs on this server. |
 | Tooling | uv, ruff, mypy (strict), pytest, GitHub Actions | Same as DevSwarm. |
 
 ### 2.1 Taken from Recall (`/root/Projects/recall`), measured there on 1-hour lectures
@@ -154,7 +154,7 @@ Each milestone ends with: tests green, a demo, docs updated, a commit, and a che
 | **M5** | Summary video: script → TTS → ffmpeg composition, landscape and portrait | A playable `summary.mp4` |
 | **M6** | Web app: upload, live job page, course page with synced player/transcript, flashcards, quiz, exports | The full flow in the browser |
 | **M7** | Evals: keyframe recall, handwriting CER, quiz grounding rate. Hardening: limits, errors, empty states, mobile | `engram eval` report. The numbers go in the README |
-| **M8** | Launch: access codes + queue + daily limits, Cloudflare Tunnel, sample gallery, How-it-works page, README with GIFs, LinkedIn assets | A live URL |
+| **M8** | Launch: access codes + queue + daily limits, nginx + certbot + systemd (`engram-web`, `engram-worker`) for engram.devanshitiwari.com, sample gallery, How-it-works page, README with GIFs, LinkedIn assets | https://engram.devanshitiwari.com |
 
 ## 7. Risks
 
@@ -172,5 +172,5 @@ Each milestone ends with: tests green, a demo, docs updated, a commit, and a che
 
 - `ELEVENLABS_API_KEY` in `.env` (needed from M1).
 - `ANTHROPIC_API_KEY` in `.env`, used **only** by the Haiku frame reader (needed from M3). Opus runs on the plan.
-- The DNS subdomain for the Tunnel (M8), e.g. `engram.devanshitiwari.com`.
+- **A DNS record** in Cloudflare (M8): `A  engram → 165.99.53.30`, DNS only (grey cloud), the same as `devswarm`.
 - Approval of 2–3 sample lectures (M7). I'll propose MIT OCW picks: one slides, one blackboard, one handwritten tablet.
