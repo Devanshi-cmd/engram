@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -224,12 +224,16 @@ class Store:
             ).fetchone()
         return _job(row) if row else None
 
-    def requeue_running(self) -> list[str]:
-        """Jobs a stopped worker left 'running' go back in the queue (they resume)."""
+    def requeue_running(self, busy: Callable[[str], bool] = lambda _: False) -> list[str]:
+        """Jobs a stopped process left 'running' go back in the queue (they resume).
+
+        `busy` says which are still being run by a live process: those are left alone."""
         with self._connect() as db:
             rows = db.execute("SELECT id FROM jobs WHERE status = 'running'").fetchall()
-            db.execute("UPDATE jobs SET status = 'queued' WHERE status = 'running'")
-        return [r["id"] for r in rows]
+            stale = [r["id"] for r in rows if not busy(r["id"])]
+            db.executemany("UPDATE jobs SET status = 'queued' WHERE id = ? AND status = 'running'",
+                           [(i,) for i in stale])  # fmt: skip
+        return stale
 
     def set_listed(self, job_id: str, listed: bool) -> None:
         with self._connect() as db:

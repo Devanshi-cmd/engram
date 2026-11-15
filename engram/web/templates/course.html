@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% from "_icon.html" import icon, output_tile %}
 {% block title %}{{ c.title }} · Engram{% endblock %}
+{% block description %}{{ c.overview }}{% endblock %}
+{% block og_image %}courses/{{ c.id }}/files/summary.jpg{% endblock %}
 {% block head %}
   <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
   <script src="/static/vendor/katex/katex.min.js" defer></script>

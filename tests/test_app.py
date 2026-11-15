@@ -138,6 +138,24 @@ def test_a_stopped_worker_leaves_nothing_stuck(runner: Runner, lecture_video: Pa
     assert runner.store.job(job.id).status == "done"
 
 
+def test_a_worker_starting_up_leaves_a_job_another_process_is_running(
+    runner: Runner, lecture_video: Path
+) -> None:
+    from engram.pipeline.runner import job_lock
+
+    job, _ = start_job(runner, lecture_video)
+    runner.store.set_job_status(job.id, "running")
+    with job_lock(runner.job_dir(job.id)) as mine:  # `engram run` in a shell, mid-job
+        assert mine and runner.busy(job.id)
+        assert run_queue(runner, stop=lambda: True) == 0
+        assert runner.store.job(job.id).status == "running"  # not taken over
+        assert runner.run(job.id) is False  # a second runner backs off, changing nothing
+        assert runner.store.job(job.id).status == "running"
+    assert not runner.busy(job.id)  # the lock goes with the process that held it
+    assert run_queue(runner, stop=lambda: runner.store.next_queued() is None) == 1
+    assert runner.store.job(job.id).status == "done"
+
+
 def test_a_crashing_job_does_not_stop_the_queue(runner: Runner, lecture_video: Path) -> None:
     job, _ = start_job(runner, lecture_video)
 
@@ -334,3 +352,13 @@ def test_the_how_it_works_page_walks_through_every_step(settings: Settings) -> N
         assert f'<span class="hiw-node-label">{step}</span>' in page.text
     assert page.text.count('class="hiw-caption') == page.text.count('class="hiw-dot')
     assert 'href="/how-it-works"' in web(settings).get("/").text  # linked from every page
+
+
+def test_links_pasted_elsewhere_preview_with_an_image(finished: str, settings: Settings) -> None:
+    c = web(settings)
+    home = c.get("/").text
+    assert '<meta property="og:image" content="http://testserver/static/og.png">' in home
+    assert c.get("/static/og.png").status_code == 200
+    course = c.get(f"/courses/{finished}").text
+    assert f'content="http://testserver/courses/{finished}/files/summary.jpg"' in course
+    assert '<meta property="og:title" content="' in course and "· Engram" in course

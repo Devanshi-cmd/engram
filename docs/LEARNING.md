@@ -336,3 +336,17 @@ Smaller lessons along the way:
 - **What:** DevSwarm's animated relay (seven nodes on a rail, a token, one caption per step, dots that time the steps) with Engram's pipeline: lecture → listen → watch → read → write → check → course. The CSS is DevSwarm's; Engram adds only node placement and colours, and reuses DevSwarm's "locked" band as "every step saved" and its retry loop as "Opus opens the frame".
 - **Why reuse it:** the brief is DevSwarm's look exactly, and its walkthrough already handles phones, reduced motion and pausing off screen.
 - **The numbers in the captions are measured,** not illustrative: 41 frames opened and 20 corrected (CS229), 30 of 30 planted wrong answers caught, 22 of 23 board changes.
+
+### A worker restart took over a job a shell was running
+- **What happened:** the three gallery lectures ran with `engram run` in a shell. Mid-way through MIT 18.06, a deploy restarted the worker. On start-up the worker re-queues every job marked `running`, assuming a dead worker left it, so it began a second copy of the same job. Both rendered the summary video into the same temporary file, and one deleted it under the other.
+- **Fix:** whoever runs a job holds an OS lock (`flock`) on `jobs/<id>/.lock`. A second runner backs off without changing anything; the worker re-queues only `running` jobs whose lock is free, and skips a queued job another process holds. The OS releases the lock when its process exits, however it exits, so a crash never leaves a job locked.
+- **Alternatives:** a PID in the database (PIDs get reused, and it goes stale on a crash); a heartbeat column (needs a timeout, so a slow stage looks dead).
+- **Lesson:** "running" in a database is a claim, not a fact. Check it against something the OS cleans up.
+
+### Link previews
+- **What:** Open Graph tags on every page. A course link shows that course's own thumbnail and overview; the rest of the site shows a cover image built from the three sample courses (`static/og.png`, rendered from HTML in the site's colours and font).
+- **Why:** the launch is a LinkedIn post, and a pasted link without these shows a bare URL.
+- **https behind nginx:** uvicorn trusts `X-Forwarded-Proto` from 127.0.0.1 by default, so `request.base_url` comes out as https without a hard-coded site URL.
+
+### README GIFs
+- Recorded with Playwright's video capture on the live site, converted with ffmpeg (12 fps, 960 px, a palette per GIF). Both use openly licensed lectures (Khan Academy), never CS229.

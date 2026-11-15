@@ -6,9 +6,27 @@
 
 Engram listens to the talk, reads the slides and the whiteboard from the video frames (handwriting included), and lines the two up in time. The words spoken while a frame was on screen help it read that frame, and every note can cite exactly where it came from.
 
-> Status: working end to end at https://engram.devanshitiwari.com (uploads need an access code). Evals are in; launch polish is next. The plan is in [docs/PLAN.md](docs/PLAN.md).
+**Live at [engram.devanshitiwari.com](https://engram.devanshitiwari.com).** Browse the sample courses for free; uploads need an access code.
+
+![A course made from Khan Academy's "Reduced row echelon form" lecture: chapters move the player, notes show the board they came from, then a flashcard and a quiz question](docs/media/course.gif)
+
+### Sample courses
+
+Three openly licensed lectures, one for each kind of board Engram reads:
+
+| Lecture | Board | Course |
+|---|---|---|
+| MIT 18.06 Linear Algebra, lecture 1 (Gilbert Strang) · 40 min | Blackboard, 480p | [The Geometry of Linear Equations](https://engram.devanshitiwari.com/courses/903a706126d5) |
+| MIT 6.0001 Intro to CS and Programming in Python, lecture 1 (Ana Bell) · 43 min | Slides | [What Is Computation?](https://engram.devanshitiwari.com/courses/3dd0035a42c6) |
+| Khan Academy, Reduced row echelon form 1 (Sal Khan) · 18 min | Tablet handwriting | [Reduced Row Echelon Form](https://engram.devanshitiwari.com/courses/20999e38e3be) |
+
+The lectures are CC BY-NC-SA 4.0 ([MIT OpenCourseWare](https://ocw.mit.edu/terms), [Khan Academy](https://www.khanacademy.org/about/tos)); the courses made from them are shared under the same licence. All Khan Academy content is available for free at www.khanacademy.org.
 
 ## How it works
+
+The site has an animated walkthrough: [How it works?](https://engram.devanshitiwari.com/how-it-works)
+
+![The How it works? walkthrough: a lecture moves through listen, watch, read, write and check, and becomes a course](docs/media/how-it-works.gif)
 
 ```mermaid
 flowchart LR

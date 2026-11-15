@@ -1,8 +1,9 @@
 """The worker: one process that runs queued jobs, oldest first, one at a time.
 
 The web app only records uploads as queued jobs; this process does the work, so restarting
-the web app never interrupts a lecture. A job left 'running' by a stopped worker is queued
-again on start-up, and resumes from its last finished stage (the runner skips what's done).
+the web app never interrupts a lecture. A job left 'running' by a stopped process is queued
+again on start-up and resumes from its last finished stage (the runner skips what's done).
+A job another live process holds (`engram run` in a shell) is left alone.
 """
 
 from __future__ import annotations
@@ -24,12 +25,15 @@ def run_queue(
     sleep: Callable[[float], None] = time.sleep,
 ) -> int:
     """Runs jobs until `stop()` is true. Returns how many jobs it ran."""
-    for job_id in runner.store.requeue_running():
-        log.info("resuming %s, left running by a previous worker", job_id)
+    for job_id in runner.store.requeue_running(busy=runner.busy):
+        log.info("resuming %s, left running by a stopped process", job_id)
     ran = 0
     while not stop():
         job = runner.store.next_queued()
         if job is None:
+            sleep(poll_seconds)
+            continue
+        if runner.busy(job.id):  # `engram run` in a shell has it: wait for that to finish
             sleep(poll_seconds)
             continue
         log.info("running %s (%s)", job.id, job.title)

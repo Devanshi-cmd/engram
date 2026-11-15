@@ -16,12 +16,14 @@ but every other branch still finishes.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import time
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -138,6 +140,26 @@ class StageContext:
         write_json(self.path(name), value)
 
 
+@contextmanager
+def job_lock(folder: Path) -> Iterator[bool]:
+    """Holds the job folder's lock while the block runs; yields False if another process has it.
+
+    An OS lock (flock) is released when its process exits, however it exits, so a crashed run
+    never leaves a job locked.
+    """
+    folder.mkdir(parents=True, exist_ok=True)
+    with (folder / ".lock").open("w") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 class Runner:
     def __init__(
         self,
@@ -163,11 +185,23 @@ class Runner:
     def job_dir(self, job_id: str) -> Path:
         return self.jobs_root / job_id
 
+    def busy(self, job_id: str) -> bool:
+        """Another process (the worker, or `engram run` in a shell) is running this job now."""
+        with job_lock(self.job_dir(job_id)) as mine:
+            return not mine
+
     def run(self, job_id: str, sink: EventSink | None = None) -> bool:
         """Runs every stage that isn't up to date. True when all of them succeed.
 
-        A lecture kept in R2 is downloaded first and its local copy deleted afterwards, so
-        the disk only ever holds the lecture being worked on."""
+        Only one process runs a job at a time: a second one returns False at once and changes
+        nothing. A lecture kept in R2 is downloaded first and its local copy deleted
+        afterwards, so the disk only ever holds the lecture being worked on."""
+        with job_lock(self.job_dir(job_id)) as mine:
+            if not mine:
+                return False
+            return self._fetch_and_run(job_id, sink)
+
+    def _fetch_and_run(self, job_id: str, sink: EventSink | None) -> bool:
         job = self.store.job(job_id)
         storage = self.services.storage
         remote = job.source_key is not None and storage is not None

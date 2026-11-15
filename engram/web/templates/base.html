@@ -4,8 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false}'>
-  <meta name="description" content="Upload a lecture video and get chaptered notes, diagrams, flashcards, a quiz and a narrated summary, each linked to the moment it came from.">
+  {%- set description %}{% block description %}Upload a lecture video and get chaptered notes, diagrams, flashcards, a quiz and a narrated summary, each linked to the moment it came from.{% endblock %}{% endset %}
+  <meta name="description" content="{{ description | trim }}">
   <title>{% block title %}Engram{% endblock %}</title>
+  {#- What a link shows when it's pasted into LinkedIn, Slack and the like. #}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Engram">
+  <meta property="og:title" content="{{ self.title() }}">
+  <meta property="og:description" content="{{ description | trim }}">
+  <meta property="og:url" content="{{ request.url }}">
+  <meta property="og:image" content="{{ request.base_url }}{% block og_image %}static/og.png{% endblock %}">
+  <meta name="twitter:card" content="summary_large_image">
   <script src="/static/site.js?v={{ version }}"></script>
   <link rel="icon" href="/static/favicon.svg?v={{ version }}" type="image/svg+xml">
   <link rel="stylesheet" href="/static/theme.css?v={{ version }}">
