@@ -313,3 +313,26 @@ Smaller lessons along the way:
 - **What happened:** the page saved marks a moment after each click, one write at a time. When a write finished before the next delayed save fired, that save found nothing new and wrote a record with no marks, which then cleared the page. A whole sheet of marks was lost.
 - **Fix:** a save with nothing new is skipped, a record without labels never repaints the page, and a record older than the page's own last save is ignored. A simulated store with slow writes reproduced the bug in the old code and confirmed the fix before the page was used again.
 - **Lesson:** debounced saves need a test of the "nothing left to save" path, not only of the busy path.
+
+## M8: launch
+
+### A daily limit per access code
+- **What:** each code may start `ENGRAM_DAILY_UPLOADS` lectures (default 3) in any 24 hours. The check runs when the page asks for an upload slot, before any bytes move, and the refusal says when the code frees up.
+- **Why:** every lecture spends ElevenLabs minutes, Haiku calls and Claude plan usage. One shared code shouldn't be able to drain them in an afternoon.
+- **How it counts:** finished uploads (a job made, or an existing job reused) per hashed code, in a rolling window. Abandoned slots don't count. Re-uploading the same file still counts, though it costs nothing new: simpler to explain than an exception.
+- **Alternatives:** a fixed reset at midnight (bursty, and whose midnight?); a global daily cap (one heavy user locks everyone out); per-IP limits (shared campus networks).
+
+### HSTS in nginx, for this host only
+- **What:** `Strict-Transport-Security: max-age=31536000`, set in the nginx site like the server's other HTTPS sites.
+- **Why not `includeSubDomains` or `preload`:** both would commit every subdomain of devanshitiwari.com to HTTPS, and other projects live there. Preload is also hard to undo.
+
+### A gallery of openly licensed lectures, credited
+- **Picks:** MIT 18.06 lecture 1 (Strang, blackboard), MIT 6.0001 lecture 1 (Bell, slides), Khan Academy's "Reduced row echelon form 1" (Sal Khan, tablet). One for each kind of board Engram reads.
+- **Licences checked at the source, not assumed:** both MIT videos say CC BY-NC-SA in their descriptions. Khan Academy's YouTube description doesn't. Their terms say content is for personal non-commercial use unless a page says otherwise, and this video's own page on khanacademy.org says "Creative Commons Attribution/Non-Commercial/Share-Alike". The terms also require the notice "All Khan Academy content is available for free at www.khanacademy.org", which its course page shows.
+- **ShareAlike:** a generated course is an adaptation, so the course page says it's shared under the same licence.
+- **Where the credit lives:** `credit.json` in the job folder, written by `engram list --source --url --license`. A credit without its licence is refused.
+
+### How it works?, built from DevSwarm's walkthrough
+- **What:** DevSwarm's animated relay (seven nodes on a rail, a token, one caption per step, dots that time the steps) with Engram's pipeline: lecture → listen → watch → read → write → check → course. The CSS is DevSwarm's; Engram adds only node placement and colours, and reuses DevSwarm's "locked" band as "every step saved" and its retry loop as "Opus opens the frame".
+- **Why reuse it:** the brief is DevSwarm's look exactly, and its walkthrough already handles phones, reduced motion and pausing off screen.
+- **The numbers in the captions are measured,** not illustrative: 41 frames opened and 20 corrected (CS229), 30 of 30 planted wrong answers caught, 22 of 23 board changes.

@@ -32,6 +32,7 @@ class Settings:
     anthropic_api_key: str | None = None
     access_codes: frozenset[str] = field(default_factory=frozenset)
     max_minutes: int = 120
+    daily_uploads: int = 3  # lectures per access code per 24 hours
     r2_account_id: str | None = None
     r2_access_key_id: str | None = None
     r2_secret_access_key: str | None = None
@@ -59,6 +60,7 @@ def load_settings(env_file: Path | None = ROOT / ".env") -> Settings:
         anthropic_api_key=_env("ANTHROPIC_API_KEY"),
         access_codes=frozenset(c.strip() for c in codes.split(",") if c.strip()),
         max_minutes=int(os.environ.get("ENGRAM_MAX_MINUTES", "120")),
+        daily_uploads=int(os.environ.get("ENGRAM_DAILY_UPLOADS", "3")),
         r2_account_id=_env("R2_ACCOUNT_ID"),
         r2_access_key_id=_env("R2_ACCESS_KEY_ID"),
         r2_secret_access_key=_env("R2_SECRET_ACCESS_KEY"),

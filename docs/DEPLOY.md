@@ -44,6 +44,7 @@ sudo certbot --nginx -d engram.devanshitiwari.com --redirect
 
 - `client_max_body_size 2g` and `proxy_request_buffering off`: lecture videos stream straight through to the app instead of being buffered on disk first.
 - `proxy_read_timeout` and `proxy_send_timeout 600s`: a 2 GB upload on a slow connection takes minutes.
+- `add_header Strict-Transport-Security "max-age=31536000" always`: browsers remember to use HTTPS for a year, as the other sites on this server do. It covers this host only. `includeSubDomains` would commit every `*.devanshitiwari.com` site to HTTPS too, and those are separate projects.
 
 ## Cloudflare R2 (big files)
 
@@ -71,7 +72,20 @@ How uploads work: the page sends the access code, the file's name and its size f
 - `PrivateTmp=true`: the worker can't see `/tmp`. Uploads live in `.data/uploads/`, so that's fine, but a job made with `engram run /tmp/…` from a shell can only be processed by that shell.
 - Logs: `journalctl -u engram-worker -f`. List jobs with `engram jobs`; show a course on the home page with `engram list <job>` (and `--hide`).
 
-## Still to come (M8)
+## Limits
 
-- Daily limits per access code, and a queue position on the home page.
-- An HSTS header, once the domain has been stable on HTTPS for a while.
+- **Per access code:** `ENGRAM_DAILY_UPLOADS` lectures per 24 hours (default 3). A code over its limit gets no upload slot, so nothing is sent; the message says how many hours until it frees up. Codes are counted by a hash, never stored.
+- **Per lecture:** `ENGRAM_MAX_MINUTES` (default 120). Checked before processing starts, so an over-long lecture costs nothing.
+- **Queue:** 5 lectures waiting at most; more are turned away with "try again in an hour".
+
+## Sample courses (the gallery)
+
+Only openly licensed lectures go on the home page, each credited on its course page:
+
+```bash
+uv run engram run lecture.mp4 --title "…"
+uv run engram list <job> --source "MIT OpenCourseWare" --url "https://…" \
+    --license "CC BY-NC-SA 4.0" --license-url "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+```
+
+`--notice` adds a line a licence asks for (Khan Academy's: "All Khan Academy content is available for free at www.khanacademy.org"). The course page says the course is made from the lecture and shared under the same licence, as ShareAlike requires. The demo is free with no ads, which keeps it within NonCommercial. Stanford CS229 isn't openly licensed: it stays unlisted.

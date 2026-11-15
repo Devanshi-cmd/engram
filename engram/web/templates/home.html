@@ -66,8 +66,10 @@
   <div class="course-grid">
     {% for course in courses %}
     <a class="bento-card course-card" href="/courses/{{ course.id }}">
+      {% if course.thumb %}<img class="course-thumb" src="/courses/{{ course.id }}/files/summary.jpg" alt="" loading="lazy" width="1920" height="1080">{% endif %}
       <span class="course-title">{{ course.title }}</span>
-      <span class="muted">{{ course.summary }}</span>
+      <span class="course-summary muted">{{ course.summary }}</span>
+      {% if course.credit %}<span class="course-source">{{ course.credit.source }} · {{ course.credit.license }}</span>{% endif %}
     </a>
     {% endfor %}
   </div>

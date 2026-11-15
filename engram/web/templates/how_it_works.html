@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}How it works? · Engram{% endblock %}
+{% block content %}
+{#- The walkthrough is DevSwarm's (theme.css .hiw-*): seven steps on a rail, one caption at a time.
+    Each caption's data-* attributes set the stage's state; site.js only picks the step. -#}
+{% set nodes = [
+  ("video", "Lecture", "your video", '<rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3z"/>'),
+  ("listen", "Listen", "words, timed", '<path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/>'),
+  ("watch", "Watch", "board changes", '<rect x="8" y="8" width="13" height="10" rx="2"/><path d="M4 15V6a2 2 0 0 1 2-2h11"/>'),
+  ("read", "Read", "every frame", '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>'),
+  ("write", "Write", "the course", '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'),
+  ("check", "Check", "every answer", '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path class="hiw-check-idle" d="M9 12h6"/><path class="hiw-check-fail" d="M9.5 9.5l5 5M14.5 9.5l-5 5"/><path class="hiw-check-pass" d="M8.5 12l2.5 2.5 4.5-5"/>'),
+  ("course", "Course", "ready to study", '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/>'),
+] %}
+{% set steps = [
+  ({"at": 0}, "You upload a lecture", "Any lecture video up to two hours. Your access code is checked before a single byte is sent, then the video goes straight to storage."),
+  ({"at": 1, "locked": "on"}, "It listens", "ElevenLabs Scribe turns the talk into words, each with its exact time, and tells the lecturer apart from students asking questions."),
+  ({"at": 2, "locked": "on"}, "It watches the board", "Frames are compared every two seconds, and one is kept each time the board changes, from the view where the lecturer blocks the least. A 78-minute lecture becomes about 120 frames."),
+  ({"at": 3, "locked": "on"}, "A fast model reads every frame", "Claude Haiku reads each board and slide, with the words spoken at that moment as a hint. Handwritten maths comes back as LaTeX, for about 15 cents an hour of lecture."),
+  ({"at": 4, "locked": "on"}, "A strong model writes the course", "Claude Opus works from a compact text timeline, not thousands of images, and writes chapters, notes, diagrams, flashcards and a quiz. Every item points to a moment in the lecture."),
+  ({"at": 4, "locked": "on", "loop": "on"}, "When a reading looks wrong, it looks for itself", "Frames flagged as unclear go back to Opus as images. In Stanford's CS229 it opened 41 frames and corrected 20 readings."),
+  ({"at": 5, "locked": "on", "check": "fail"}, "A second model checks every answer", "Haiku checks each flashcard and quiz answer against what was said and written. Anything it can't find in the lecture is removed: it caught all 30 planted wrong answers."),
+  ({"at": 5, "locked": "on", "check": "pass"}, "What's left is grounded", "Real items pass: all 86 flashcards and questions from two lectures were kept."),
+  ({"at": 6, "locked": "on", "check": "pass", "done": "on"}, "Your course is ready", "Notes, diagrams, flashcards, a quiz and a narrated summary video. Click any item to jump to that moment in the lecture."),
+] %}
+<section class="card hiw" id="how-it-works" aria-labelledby="hiw-title">
+  <div class="hiw-intro hiw-reveal">
+    <p class="home-hero-eyebrow">Under the hood</p>
+    <h1 id="hiw-title">How it works?</h1>
+    <p class="hiw-lead">Engram listens to a lecture and watches its board at the same time, then lines the two up. Here is one lecture from upload to course.</p>
+  </div>
+
+  <div class="hiw-stage hiw-reveal" data-at="0" aria-hidden="true">
+    <div class="hiw-sandbox">
+      <span class="hiw-sandbox-label">
+        <svg viewBox="0 0 24 24"><path d="M4 7a8 3 0 0 0 16 0 8 3 0 0 0-16 0v10a8 3 0 0 0 16 0V7M4 12a8 3 0 0 0 16 0"/></svg>
+        <span>Every step saved<span class="hiw-sandbox-more">: nothing runs twice</span></span>
+      </span>
+    </div>
+    <div class="hiw-loop"><span>Opus opens the frame</span></div>
+    <div class="hiw-rail"><span class="hiw-rail-fill"></span></div>
+    <span class="hiw-token"></span>
+    {% for key, label, sub, svg in nodes %}
+    <div class="hiw-node hiw-step-{{ key }}{% if loop.first %} is-active{% endif %}" data-node="{{ loop.index0 }}">
+      <span class="agent-tile hiw-tile-{{ key }}"><svg viewBox="0 0 24 24">{{ svg | safe }}</svg></span>
+      <span class="hiw-node-text">
+        <span class="hiw-node-label">{{ label }}</span>
+        <span class="hiw-node-sub">{{ sub }}</span>
+      </span>
+      {% if key in ("listen", "read", "write", "check") %}<span class="hiw-working"><i></i><i></i><i></i></span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="hiw-panel hiw-reveal">
+    <ol class="hiw-captions">
+      {% for data, title, text in steps %}
+      <li class="hiw-caption{% if loop.first %} is-current{% endif %}"{% for name, value in data.items() %} data-{{ name }}="{{ value }}"{% endfor %}>
+        <span class="hiw-step-number">Step {{ loop.index }} of {{ steps | length }}</span>
+        <h3>{{ title }}</h3>
+        <p>{{ text }}</p>
+      </li>
+      {% endfor %}
+    </ol>
+    <div class="hiw-controls">
+      <button class="hiw-play" type="button" aria-pressed="false" aria-label="Pause the walkthrough">
+        <svg class="hiw-icon-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
+        <svg class="hiw-icon-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>
+      </button>
+      <div class="hiw-dots">
+        {% for data, title, text in steps %}
+        <button class="hiw-dot{% if loop.first %} is-current{% endif %}" type="button" aria-label="Step {{ loop.index }}: {{ title }}"></button>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <ul class="hiw-rules">
+    <li class="hiw-rule hiw-reveal">
+      <span class="hiw-rule-icon hiw-rule-boss"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="19" cy="12" r="2.5"/><path d="M7.5 12h2M14.5 12h2"/></svg></span>
+      <h3>Cheap eyes, expensive brain</h3>
+      <p>A fast model reads every frame. The strongest model only thinks, and opens an image only when it needs one.</p>
+    </li>
+    <li class="hiw-rule hiw-reveal">
+      <span class="hiw-rule-icon hiw-rule-lock"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path class="hiw-shackle" d="M12 8v4l2.5 2.5"/></svg></span>
+      <h3>Everything has a timestamp</h3>
+      <p>Each note, card and question quotes the lecture or points to a frame. Plain code turns that into a moment you can click.</p>
+    </li>
+    <li class="hiw-rule hiw-reveal">
+      <span class="hiw-rule-icon hiw-rule-check"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+      <h3>Checked, not trusted</h3>
+      <p>A second model tests every answer against the lecture, and anything it can't find there is removed.</p>
+    </li>
+    <li class="hiw-rule hiw-reveal">
+      <span class="hiw-rule-icon hiw-rule-stop"><svg viewBox="0 0 24 24"><path d="M5 19V9M10 19V5M15 19v-7M20 19v-4"/></svg></span>
+      <h3>Measured on real lectures</h3>
+      <p>On a person's answer key, Engram caught 22 of 23 board changes in Stanford's CS229, and 5 of 5 in MIT 18.06.</p>
+    </li>
+  </ul>
+</section>
+{% endblock %}

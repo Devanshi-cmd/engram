@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
@@ -109,17 +110,35 @@ def r2_check(
 def list_course(
     job_id: str = typer.Argument(..., help="The job to show or hide."),
     hide: bool = typer.Option(False, "--hide", help="Take it off the home page."),
+    source: str = typer.Option("", help="Who made the lecture, e.g. 'MIT OpenCourseWare'."),
+    url: str = typer.Option("", help="Where the original lecture is."),
+    license: str = typer.Option("", help="Its licence, e.g. 'CC BY-NC-SA 4.0'."),
+    license_url: str = typer.Option("", help="Link to the licence text."),
+    notice: str = typer.Option("", help="A notice the licence requires shown with it."),
 ) -> None:
-    """Show a finished course among the home page's sample courses (or hide it)."""
+    """Show a finished course among the home page's sample courses (or hide it).
+
+    A lecture someone else made is credited on its course page: pass --source, --url and
+    --license (all three) the first time it's listed.
+    """
     from engram.config import load_settings
     from engram.pipeline import Store
 
-    store = Store(load_settings().data_dir / "engram.sqlite3")
+    settings = load_settings()
+    store = Store(settings.data_dir / "engram.sqlite3")
     try:
         store.job(job_id)
     except KeyError:
         typer.secho(f"✕ No job {job_id}", fg="red", err=True)
         raise typer.Exit(1) from None
+    if source or url or license:
+        if not (source and url and license):
+            typer.secho("✕ A credit needs --source, --url and --license.", fg="red", err=True)
+            raise typer.Exit(1)
+        credit = {"source": source, "url": url, "license": license,
+                  "license_url": license_url, "notice": notice}  # fmt: skip
+        path = settings.data_dir / "jobs" / job_id / "credit.json"
+        path.write_text(json.dumps(credit, indent=1, ensure_ascii=False))
     store.set_listed(job_id, not hide)
     typer.echo(f"{job_id} is {'hidden' if hide else 'listed on the home page'}.")
 

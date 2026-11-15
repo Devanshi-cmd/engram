@@ -32,6 +32,9 @@
       <li><strong>{{ c.counts.questions }}</strong> quiz questions</li>
       <li><strong>{{ c.counts.diagrams }}</strong> diagrams</li>
     </ul>
+    {% if c.credit %}
+    <p class="course-credit">Lecture by <a href="{{ c.credit.url }}" rel="noopener">{{ c.credit.source }}</a>, {% if c.credit.license_url %}<a href="{{ c.credit.license_url }}" rel="license noopener">{{ c.credit.license }}</a>{% else %}{{ c.credit.license }}{% endif %}. This course is made from it and shared under the same licence.{% if c.credit.notice %} {{ c.credit.notice }}{% endif %}</p>
+    {% endif %}
     <div class="run-hero-actions">
       <a class="button-secondary button" href="/courses/{{ c.id }}/export/notes.zip">{{ icon("download") }}Notes (Markdown)</a>
       <a class="button-secondary button" href="/courses/{{ c.id }}/export/anki.txt">{{ icon("download") }}Anki deck</a>

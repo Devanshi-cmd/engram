@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS uploads (
   size INTEGER NOT NULL,
   content_type TEXT NOT NULL,
   created_at REAL NOT NULL,
-  job_id TEXT
+  job_id TEXT,
+  code_id TEXT NOT NULL DEFAULT ''
 );
 """
 
@@ -91,6 +92,7 @@ class Upload:
     content_type: str
     created_at: float
     job_id: str | None
+    code_id: str = ""  # which access code paid for it (a hash, never the code)
 
 
 @dataclass(frozen=True)
@@ -126,6 +128,9 @@ class Store:
                 db.execute("ALTER TABLE jobs ADD COLUMN listed INTEGER NOT NULL DEFAULT 0")
             if "source_key" not in columns:  # added with R2 storage
                 db.execute("ALTER TABLE jobs ADD COLUMN source_key TEXT")
+            columns = {r["name"] for r in db.execute("PRAGMA table_info(uploads)")}
+            if "code_id" not in columns:  # added with daily limits (M8)
+                db.execute("ALTER TABLE uploads ADD COLUMN code_id TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -153,14 +158,16 @@ class Store:
 
     # ---- uploads: an access code buys a one-time upload slot ----------------
     def create_upload(
-        self, key: str, filename: str, title: str, size: int, content_type: str
-    ) -> Upload:
+        self, key: str, filename: str, title: str, size: int, content_type: str,
+        code_id: str = "",
+    ) -> Upload:  # fmt: skip
         upload_id = uuid.uuid4().hex
         with self._connect() as db:
             db.execute(
-                "INSERT INTO uploads VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+                "INSERT INTO uploads (id, key, filename, title, size, content_type, created_at,"
+                " job_id, code_id) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)",
                 (upload_id, key.format(id=upload_id), filename, title, size, content_type,
-                 time.time()),
+                 time.time(), code_id),
             )  # fmt: skip
         found = self.upload(upload_id)
         assert found is not None
@@ -174,6 +181,16 @@ class Store:
                 (upload_id, time.time() - UPLOAD_SECONDS),
             ).fetchone()
         return Upload(**dict(row)) if row else None
+
+    def uploads_since(self, code_id: str, since: float) -> list[float]:
+        """When each finished upload paid for by this code started, oldest first."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT created_at FROM uploads WHERE code_id = ? AND job_id IS NOT NULL"
+                " AND created_at > ? ORDER BY created_at",
+                (code_id, since),
+            ).fetchall()
+        return [r["created_at"] for r in rows]
 
     def finish_upload(self, upload_id: str, job_id: str) -> None:
         with self._connect() as db:

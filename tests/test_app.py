@@ -4,6 +4,7 @@ import io
 import json
 import re
 import shutil
+import sqlite3
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -220,6 +221,27 @@ def test_only_listed_courses_reach_the_home_page(finished: str, settings: Settin
     assert f"/courses/{finished}" in c.get("/").text
 
 
+def test_a_listed_lecture_credits_its_source_and_licence(
+    finished: str, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typer.testing import CliRunner
+
+    from engram.cli import app as cli
+
+    monkeypatch.setenv("ENGRAM_DATA_DIR", str(settings.data_dir))
+    half = CliRunner().invoke(cli, ["list", finished, "--source", "MIT OpenCourseWare"])
+    assert half.exit_code == 1  # a credit without its licence is refused
+    ok = CliRunner().invoke(cli, ["list", finished, "--source", "MIT OpenCourseWare",
+                                  "--url", "https://ocw.mit.edu/x", "--license", "CC BY-NC-SA 4.0",
+                                  "--notice", "Free at ocw.mit.edu."])  # fmt: skip
+    assert ok.exit_code == 0, ok.output
+    c = web(settings)
+    page = c.get(f"/courses/{finished}").text
+    assert 'href="https://ocw.mit.edu/x"' in page and "CC BY-NC-SA 4.0" in page
+    assert "shared under the same licence" in page and "Free at ocw.mit.edu." in page
+    assert "MIT OpenCourseWare · CC BY-NC-SA 4.0" in c.get("/").text
+
+
 # --- Text and formats ----------------------------------------------------------------------
 
 
@@ -279,3 +301,36 @@ def test_a_full_queue_turns_uploads_away(
         start_job(runner, copy)
     r = upload(web(settings), lecture_video)
     assert r.status_code == 503 and "busy" in r.json()["error"]
+
+
+def test_each_access_code_gets_a_few_lectures_a_day(
+    settings: Settings, lecture_video: Path, tmp_path: Path
+) -> None:
+    s = Settings(data_dir=settings.data_dir, access_codes=frozenset({"ana", "bo"}),
+                 daily_uploads=2)  # fmt: skip
+    client = TestClient(create_app(s, allowed_hosts=["testserver"], accept_uploads=True))
+    videos = []
+    for i in range(3):
+        copy = tmp_path / f"talk{i}.mp4"
+        copy.write_bytes(lecture_video.read_bytes() + bytes([i]))
+        videos.append(copy)
+    assert all(upload(client, v, "ana").status_code == 200 for v in videos[:2])
+    refused = upload(client, videos[2], "ana")
+    assert refused.status_code == 429 and "2 lectures for the day" in refused.json()["error"]
+    assert "24 hours" in refused.json()["error"]
+    assert upload(client, videos[2], "bo").status_code == 200  # another code has its own count
+    slot = client.post("/uploads", json={"access_code": "ana", "filename": "x.mp4", "size": 9})
+    assert slot.status_code == 429  # no slot at all, so nothing can be sent
+
+    with sqlite3.connect(s.data_dir / "engram.sqlite3") as db:  # a day later
+        db.execute("UPDATE uploads SET created_at = created_at - 86400")
+    assert upload(client, videos[2], "ana").status_code == 200
+
+
+def test_the_how_it_works_page_walks_through_every_step(settings: Settings) -> None:
+    page = web(settings).get("/how-it-works")
+    assert page.status_code == 200
+    for step in ("Listen", "Watch", "Read", "Write", "Check", "Course"):
+        assert f'<span class="hiw-node-label">{step}</span>' in page.text
+    assert page.text.count('class="hiw-caption') == page.text.count('class="hiw-dot')
+    assert 'href="/how-it-works"' in web(settings).get("/").text  # linked from every page

@@ -6,7 +6,9 @@ worker (`engram worker`) runs it. So restarting the site never interrupts a lect
 
 from __future__ import annotations
 
+import hashlib
 import hmac
+import math
 import re
 import shutil
 import time
@@ -72,6 +74,7 @@ VIDEO_TYPES = {
 UPLOAD_ID = re.compile(r"^[0-9a-f]{32}$")
 WRONG_CODE_LIMIT, WRONG_CODE_WINDOW = 10, 600.0  # per address: guessing codes gets slow
 MAX_UPLOAD_BYTES = 2 * 1024**3
+DAY = 24 * 3600.0
 MAX_QUEUED = 5  # more waiting than this and a new upload is turned away, not left for hours
 MIN_FREE_BYTES = 4 * 1024**3  # an upload, its web copy and its frames need room
 
@@ -129,7 +132,9 @@ def create_app(
             files = course_view.load(jobs_root / job.id) if job.listed else None
             if files is not None:
                 c = files.course
-                listed.append({"id": job.id, "title": c["title"], "summary": c["overview"]})
+                listed.append({"id": job.id, "title": c["title"], "summary": c["overview"],
+                               "credit": files.read("credit.json"),
+                               "thumb": (jobs_root / job.id / "summary.jpg").exists()})  # fmt: skip
         return templates.TemplateResponse(
             request,
             "home.html",
@@ -171,6 +176,13 @@ def create_app(
         if not any(hmac.compare_digest(code.encode(), c.encode()) for c in settings.access_codes):
             recent.append(now)
             return refused("That access code isn't valid.", 403)
+        code_id = hashlib.sha256(code.encode()).hexdigest()[:16]
+        used = store.uploads_since(code_id, now - DAY)
+        if len(used) >= settings.daily_uploads:
+            hours = max(1, math.ceil((used[0] + DAY - now) / 3600))
+            return refused(
+                f"This access code has used its {settings.daily_uploads} lectures for the day. "
+                f"Try again in {hours} hour{'s' if hours != 1 else ''}.", 429)  # fmt: skip
         suffix = Path(filename).suffix.lower()
         if suffix not in VIDEO_TYPES:
             return refused("Upload a video file: MP4, MOV, MKV or WebM.", 400)
@@ -183,7 +195,7 @@ def create_app(
         content_type = VIDEO_TYPES[suffix]
         name = title.strip()[:120] or Path(filename).stem[:120] or "Lecture"
         slot = store.create_upload("uploads/{id}" + suffix, filename[:200], name, size,
-                                   content_type)  # fmt: skip
+                                   content_type, code_id)  # fmt: skip
         put_url = (storage.upload_url(slot.key, size, content_type) if storage
                    else f"/uploads/{slot.id}/file")  # fmt: skip
         return JSONResponse({"id": slot.id, "put_url": put_url, "content_type": content_type})
@@ -386,6 +398,10 @@ def create_app(
             exports.anki(files.course),
             headers={"Content-Disposition": f'attachment; filename="{name}-anki.txt"'},
         )
+
+    @app.get("/how-it-works", response_class=HTMLResponse)
+    def how_it_works(request: Request) -> Response:
+        return templates.TemplateResponse(request, "how_it_works.html", {})
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
