@@ -35,6 +35,37 @@
     {% endif %}
   </div>
 
+  {#- With sample courses, the card is one of them, with its real numbers. It moves to the next
+      every few seconds (site.js); without JavaScript it simply shows the first. -#}
+  {% set samples = courses | selectattr("thumb") | list %}
+  {% if samples %}
+  <div class="showcase">
+    <div class="showcase-card sample-card" data-samples>
+      <div class="showcase-head"><span>One lecture becomes</span></div>
+      {% for c in samples %}
+      <div class="sample"{% if not loop.first %} hidden{% endif %}>
+        <a class="sample-thumb" href="/courses/{{ c.id }}#summary">
+          <img src="/courses/{{ c.id }}/files/summary.jpg" alt="" width="1920" height="1080"{% if not loop.first %} loading="lazy"{% endif %}>
+          <span class="sample-play">{{ icon("play") }}Watch the summary</span>
+        </a>
+        <p class="sample-title"><span>{{ c.title }}</span>{% if c.credit %}<small>{{ c.credit.source.split(" (")[0] }} · {{ c.minutes }} min</small>{% endif %}</p>
+        <ul class="showcase-steps sample-steps">
+          <li>{{ output_tile("notes") }}<span class="showcase-agent">Notes</span><span class="sample-count">{{ c.counts.chapters }} chapter{{ "s" if c.counts.chapters != 1 }}</span></li>
+          <li>{{ output_tile("diagram") }}<span class="showcase-agent">Diagrams</span><span class="sample-count">{{ c.counts.diagrams }}</span></li>
+          <li>{{ output_tile("cards") }}<span class="showcase-agent">Flashcards</span><span class="sample-count">{{ c.counts.cards }}</span></li>
+          <li>{{ output_tile("quiz") }}<span class="showcase-agent">Quiz</span><span class="sample-count">{{ c.counts.questions }} question{{ "s" if c.counts.questions != 1 }}</span></li>
+        </ul>
+        <a class="sample-open" href="/courses/{{ c.id }}">Open this course {{ icon("arrow") }}</a>
+      </div>
+      {% endfor %}
+      {% if samples | length > 1 %}
+      <div class="sample-dots" role="group" aria-label="Sample courses">
+        {% for c in samples %}<button type="button" aria-label="{{ c.title }}" aria-current="{{ 'true' if loop.first else 'false' }}"></button>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
   <div class="showcase" aria-hidden="true">
     <div class="showcase-card outputs-card">
       <div class="showcase-head"><span>One lecture becomes</span></div>
@@ -45,6 +76,7 @@
       </ul>
     </div>
   </div>
+  {% endif %}
 </section>
 
 <section class="run-section" aria-labelledby="outputs-title">

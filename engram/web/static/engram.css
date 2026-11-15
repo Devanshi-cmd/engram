@@ -45,6 +45,28 @@
 .outputs-card { padding-bottom: 10px; }
 .outputs-card .showcase-steps li:first-child { margin-top: 12px; }
 
+/* The hero card as a real sample course: its summary frame, its numbers, a link in. */
+.sample-card { padding-bottom: 10px; }
+.sample { animation: sample-in 0.5s ease both; }
+.sample-thumb { position: relative; display: block; margin: 12px 0 4px; overflow: hidden; border-radius: 12px; background: #000000; }
+.sample-thumb img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; transition: transform 0.3s ease; }
+.sample-thumb:hover img { transform: scale(1.03); }
+.sample-play { position: absolute; left: 12px; bottom: 12px; display: flex; align-items: center; gap: 6px; padding: 5px 12px 5px 9px; border-radius: var(--pill); background: rgba(0, 0, 0, 0.6); color: #ffffff; font-size: 13px; font-weight: 600; }
+.sample-play .icon { width: 12px; height: 12px; fill: #ffffff; stroke: none; }
+.sample-thumb:hover { text-decoration: none; }
+.sample-title { display: flex; align-items: baseline; justify-content: space-between; gap: 4px 10px; flex-wrap: wrap; margin: 8px 0 2px; }
+.sample-title span { min-width: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
+.sample-title small { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.sample-steps li { padding: 7px 0; }
+.sample-count { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.sample-open { display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 10px 0 4px; border-top: 1px solid var(--hairline); color: var(--link); font-size: 15px; font-weight: 600; }
+.sample-open .icon { width: 16px; height: 16px; }
+.sample-dots { position: absolute; left: 24px; bottom: 23px; display: flex; gap: 6px; }
+.sample-dots button { width: 8px; height: 8px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: var(--hairline); cursor: pointer; transition: width 0.2s ease; }
+.sample-dots button[aria-current="true"] { width: 22px; border-radius: 4px; background: var(--action); }
+.sample-dots button:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
+@keyframes sample-in { from { opacity: 0; } to { opacity: 1; } }
+
 .output-grid, .course-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 .output-card { gap: 12px; }
 .output-card h3 { margin: 4px 0 0; font-size: 21px; letter-spacing: -0.02em; }
@@ -70,7 +92,8 @@
   .output-card { padding: 22px 24px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dropzone, .course-card { transition: none; }
+  .dropzone, .course-card, .sample-thumb img, .sample-dots button { transition: none; }
+  .sample { animation: none; }
 }
 
 /* ---- Job page ------------------------------------------------------------------- */

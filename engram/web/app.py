@@ -168,8 +168,14 @@ def create_app(
             files = course_view.load(jobs_root / job.id) if job.listed else None
             if files is not None:
                 c = files.course
+                chapters = c["chapters"]
                 listed.append({"id": job.id, "title": c["title"], "summary": c["overview"],
                                "credit": files.read("credit.json"),
+                               "minutes": max(1, round(c["duration"] / 60)),
+                               "counts": {"chapters": len(chapters),
+                                          "diagrams": sum(len(ch["diagrams"]) for ch in chapters),
+                                          "cards": sum(len(ch["flashcards"]) for ch in chapters),
+                                          "questions": sum(len(ch["quiz"]) for ch in chapters)},
                                "thumb": (jobs_root / job.id / "summary.jpg").exists()})  # fmt: skip
         return templates.TemplateResponse(
             request,

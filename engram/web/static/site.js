@@ -215,3 +215,40 @@
 
   document.addEventListener("DOMContentLoaded", setup);
 })();
+
+// Home page: the hero card shows one sample course at a time and moves on every few seconds.
+// It holds still while the pointer or keyboard focus is on it, and for reduced motion.
+(function () {
+  function setup() {
+    var card = document.querySelector("[data-samples]");
+    if (!card) return;
+    var slides = card.querySelectorAll(".sample");
+    var dots = card.querySelectorAll(".sample-dots button");
+    if (slides.length < 2) return;
+    var at = 0, timer = null, held = false;
+    var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function show(i) {
+      at = i;
+      slides.forEach(function (slide, j) { slide.hidden = j !== i; });
+      dots.forEach(function (dot, j) { dot.setAttribute("aria-current", String(j === i)); });
+    }
+    function schedule() {
+      clearInterval(timer);
+      if (still) return;
+      timer = setInterval(function () {
+        if (!held && !document.hidden) show((at + 1) % slides.length);
+      }, 5000);
+    }
+    dots.forEach(function (dot, j) {
+      dot.addEventListener("click", function () { show(j); schedule(); });
+    });
+    card.addEventListener("pointerenter", function () { held = true; });
+    card.addEventListener("pointerleave", function () { held = false; });
+    card.addEventListener("focusin", function () { held = true; });
+    card.addEventListener("focusout", function () { held = false; });
+    schedule();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", setup);
+  else setup();
+})();

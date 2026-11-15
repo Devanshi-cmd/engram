@@ -361,3 +361,9 @@ Smaller lessons along the way:
 - **Stale CSS:** assets were cache-busted with `?v=<package version>`, which doesn't move when a stylesheet changes, and nginx sends no Cache-Control, so browsers could keep an old copy. `?v=` is now a hash of every file in `static/`, taken when the app starts.
 - **How it was found:** a Playwright script opened every page on desktop and phone, in both themes, checked tile colours, broken images, horizontal overflow and console errors, then took screenshots that were looked through by hand.
 - **Lesson:** a copied rule that changes the cascade order can quietly override rules above it. Keep shared components in one stylesheet.
+
+### The hero card shows a real sample course
+- **What:** the "One lecture becomes" card used to list the six outputs. With listed courses, it now shows one of them: its summary frame (which opens the summary video), title, source and length, and its real counts of chapters, diagrams, flashcards and questions, with a link into the course. It moves to the next course every 5 seconds, and dots switch by hand. Without listed courses (a fresh install) it falls back to the plain list.
+- **Why:** the card showed what Engram could make; now it shows what it did make, one click from the course. Chosen from four mock-ups (a tray under the card, a footer link, this, a thumbnail rail).
+- **Motion, kept polite:** it holds still while the pointer or keyboard focus is on it, while the tab is hidden, and for reduced motion. Without JavaScript the first course just stays. Only the first image loads eagerly.
+- **Links into a tab:** the course page already opens the tab named in the URL hash, so `/courses/<id>#summary` lands on the summary video.

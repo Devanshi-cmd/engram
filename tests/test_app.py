@@ -236,7 +236,14 @@ def test_only_listed_courses_reach_the_home_page(finished: str, settings: Settin
     c = web(settings)
     assert f"/courses/{finished}" not in c.get("/").text
     Store(settings.data_dir / "engram.sqlite3").set_listed(finished, True)
-    assert f"/courses/{finished}" in c.get("/").text
+    home = c.get("/").text
+    assert f"/courses/{finished}" in home
+    # With a listed course that has a summary frame, the hero card becomes that course.
+    assert (settings.data_dir / "jobs" / finished / "summary.jpg").exists()
+    assert "data-samples" in home and f'href="/courses/{finished}#summary"' in home
+    course = json.loads((settings.data_dir / "jobs" / finished / "course.json").read_text())
+    cards = sum(len(ch["flashcards"]) for ch in course["chapters"])
+    assert f'Flashcards</span><span class="sample-count">{cards}</span>' in home
 
 
 def test_a_listed_lecture_credits_its_source_and_licence(
