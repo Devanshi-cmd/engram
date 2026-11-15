@@ -11,7 +11,7 @@
 | Showcase quality | Every page uses the DevSwarm Apple theme. No dead ends, no raw errors or spinners without progress. Works on mobile and in light and dark mode. |
 | Real multimodal sync | Every note, card and question carries a timestamp and the frame it came from. Clicking it seeks the player there. |
 | Handles long lectures | A 90-minute lecture finishes, survives a crash mid-run, and resumes without paying for finished steps again. |
-| Honest quality | A small eval set measures keyframe recall, handwriting accuracy (CER) and quiz grounding. The numbers go in the README. |
+| Honest quality | A small eval set measures keyframe recall and quiz grounding (handwriting CER was dropped: see LEARNING). The numbers go in the README. |
 | Explained | README, ARCHITECTURE, HOW_IT_WORKS and LEARNING (the decision log) are written as each milestone is built, not at the end. |
 
 **Out of scope for v1:** YouTube URL import (licensing), user accounts, languages other than English (Scribe supports them, but prompts and evals are English only), and editing generated content.

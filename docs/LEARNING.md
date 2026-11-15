@@ -294,3 +294,22 @@ Smaller lessons along the way:
 - **Without R2,** the same three steps run against this server (`PUT /uploads/<id>/file`, streamed, cut off at the declared size), so the form behaves the same way in both modes.
 - **Alternatives:** a public bucket with unguessable names (anyone with a link could share the raw lecture forever; signed links expire after 6 hours); presigned POST policies (R2 doesn't support them; a signed PUT with the length in the signature does the same job); multipart uploads (only needed above 5 GB, and the limit is 2 GB).
 - **Caching still works:** jobs uploaded to R2 use the object's ETag and size as their content id, so the same file uploaded twice still reuses the first job.
+
+## Board-state recall: labelled by hand, scored strictly
+
+- **What:** Devanshi marked, on contact sheets of one picture every 5 seconds, the moment each board was fullest just before it changed: 23 states in the first 20 minutes of CS229, 5 in MIT 18.06's first 6 minutes. A state counts as found if Engram kept a keyframe within 10 seconds of the mark, or a later keyframe whose view spans the mark (a board revisited or still on screen).
+- **Result:** CS229 22 of 23, MIT 5 of 5. The miss, CS229 10:05, was a board still being written; the 10:32 keyframe shows it with more on it. It stays counted as missed: judging "same board, fuller" by eye is exactly the leniency the eval should avoid.
+- **The first scorer was too generous:** it matched any keyframe after the previous mark, so a frame taken just after 0:25 "found" the board marked at 1:35, and it reported 100% with zero extra frames. Zero extras against 37 keyframes and 23 states didn't add up, which is how it was caught. The strict rule gives 96%.
+- **The window's edge:** the last CS229 board (19:55) was kept at 21:22, after the 20-minute window. Later frames are now searched across the whole lecture.
+
+## Handwriting accuracy dropped from the evals
+
+- **What:** the plan had a character error rate against hand-typed boards. Devanshi started typing them and stopped: Ng's handwriting at 720p is often unreadable from the frame alone ("Supervisd lear" for "Supervised learning", words hidden behind him).
+- **Why drop it rather than push on:** an answer key a person has to guess at measures the guess, not the reader. Engram itself never reads a frame bare: the words spoken at that moment go with it, and Opus re-opens unclear frames. The README says the number is missing and why.
+- **Alternative:** label a lecture with clean slides or tablet writing. It would give a number, but for an easier case than the one Engram is built for.
+
+## A labelling page that lost work
+
+- **What happened:** the page saved marks a moment after each click, one write at a time. When a write finished before the next delayed save fired, that save found nothing new and wrote a record with no marks, which then cleared the page. A whole sheet of marks was lost.
+- **Fix:** a save with nothing new is skipped, a record without labels never repaints the page, and a record older than the page's own last save is ignored. A simulated store with slow writes reproduced the bug in the old code and confirmed the fix before the page was used again.
+- **Lesson:** debounced saves need a test of the "nothing left to save" path, not only of the busy path.

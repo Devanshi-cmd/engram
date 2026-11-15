@@ -36,6 +36,9 @@ def test_a_state_is_found_directly_or_through_a_fuller_later_frame() -> None:
     score = board_states("x", [30, 55, 95, 130], keyframes, until=200)
     assert (score.states, score.direct, score.via_later) == (4, 2, 1)
     assert score.missed == [130] and score.extra == 1 and score.recall == 0.75
+    # a board still up when the window ends is kept by a frame after it
+    tail = board_states("x", [195], [*keyframes, frame("f4", 260, (190, 262))], until=200)
+    assert tail.via_later == 1 and tail.missed == [] and tail.keyframes == 3
 
 
 class Lenient:

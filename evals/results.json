@@ -1,6 +1,29 @@
 {
  "handwriting": [],
- "states": [],
+ "states": [
+  {
+   "lecture": "cs229",
+   "states": 23,
+   "direct": 15,
+   "via_later": 7,
+   "missed": [
+    605
+   ],
+   "keyframes": 37,
+   "extra": 18,
+   "recall": 0.9565217391304348
+  },
+  {
+   "lecture": "mit1806",
+   "states": 5,
+   "direct": 5,
+   "via_later": 0,
+   "missed": [],
+   "keyframes": 13,
+   "extra": 6,
+   "recall": 1.0
+  }
+ ],
  "grounding": [
   {
    "kind": "original",

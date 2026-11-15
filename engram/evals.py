@@ -125,14 +125,14 @@ def board_states(
     in_range = [k for k in keyframes if k.t <= until + TOLERANCE]
     score = StateScore(lecture, len(marked), 0, 0, keyframes=len(in_range))
     used: set[str] = set()
-    for i, t in enumerate(marked):
-        lo = marked[i - 1] if i else -1.0
-        direct = [k for k in in_range if lo < k.t <= t + TOLERANCE]
+    for t in marked:
+        direct = [k for k in in_range if abs(k.t - t) <= TOLERANCE]
         if direct:
             score.direct += 1
             used.update(k.id for k in direct)
             continue
-        later = [k for k in in_range if k.t > t and any(a <= t < b for a, b in k.views)]
+        # A board still up when the labelled window ends is kept after it: look at every frame.
+        later = [k for k in keyframes if k.t > t and any(a <= t < b for a, b in k.views)]
         if later:
             score.via_later += 1
             used.add(later[0].id)
@@ -272,6 +272,8 @@ def run(settings: Settings, root: Path, only: str = "", say: Callable[[str], Non
         say(f"handwriting: {len(boards)} boards")
     if only in ("", "states") and (labels / "states.json").exists():
         for lecture, marked in json.loads((labels / "states.json").read_text()).items():
+            if lecture.startswith("_"):
+                continue
             video = root / lectures[lecture]["video"]
             say(f"states: finding keyframes in {video.name}")
             result, _ = find_keyframes(video, probe(video).duration)

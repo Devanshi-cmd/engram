@@ -1,0 +1,5 @@
+{
+  "_about": "Board states marked by hand (Devanshi) on contact sheets, one picture every 5 s: the time in seconds of each board at its fullest, just before it changed.",
+  "cs229": [0, 25, 95, 160, 175, 275, 325, 355, 385, 495, 605, 635, 650, 675, 695, 710, 750, 905, 975, 990, 1140, 1160, 1195],
+  "mit1806": [0, 50, 100, 255, 355]
+}
