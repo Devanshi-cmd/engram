@@ -34,7 +34,7 @@ _HOLD = "\ue000{}\ue001"  # private-use characters: Markdown leaves them alone
 JOB_ID = re.compile(r"^[0-9a-f]{12}$")
 # The only job files the web app serves. Anything else in the folder stays private.
 PUBLIC_FILE = re.compile(
-    r"^(?:(?:frames|thumbs)/f\d{4}\.jpg|summary(?:-portrait)?\.mp4|summary\.(?:jpg|vtt))$"
+    r"^(?:(?:frames|thumbs)/f\d{4}\.jpg|summary(?:-portrait)?\.mp4|summary\.(?:jpg|vtt)|cover\.jpg)$"
 )
 
 
@@ -144,6 +144,7 @@ def view(files: CourseFiles, job_id: str) -> dict[str, Any]:
         "summary_video": files.has("summary.mp4"),
         "portrait_video": files.has("summary-portrait.mp4"),
         "captions": files.has("summary.vtt"),
+        "cover": "cover.jpg" if files.has("cover.jpg") else "summary.jpg",  # link previews
     }
 
 

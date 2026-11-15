@@ -90,3 +90,10 @@ uv run engram list <job> --source "MIT OpenCourseWare" --url "https://…" \
 ```
 
 `--notice` adds a line a licence asks for (Khan Academy's: "All Khan Academy content is available for free at www.khanacademy.org"). The course page says the course is made from the lecture and shared under the same licence, as ShareAlike requires. The demo is free with no ads, which keeps it within NonCommercial. Stanford CS229 isn't openly licensed: it stays unlisted.
+
+A course's picture on the home page and in link previews is its summary video's poster. To use a frame of your choice instead:
+
+```bash
+ffmpeg -ss 6:45 -i lecture.mp4 -frames:v 1 still.png   # a frame at full resolution
+uv run engram cover <job> still.png                    # saved as cover.jpg; --remove undoes it
+```

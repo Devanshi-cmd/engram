@@ -367,3 +367,10 @@ Smaller lessons along the way:
 - **Why:** the card showed what Engram could make; now it shows what it did make, one click from the course. Chosen from four mock-ups (a tray under the card, a footer link, this, a thumbnail rail).
 - **Motion, kept polite:** it holds still while the pointer or keyboard focus is on it, while the tab is hidden, and for reduced motion. Without JavaScript the first course just stays. Only the first image loads eagerly.
 - **Links into a tab:** the course page already opens the tab named in the URL hash, so `/courses/<id>#summary` lands on the summary video.
+
+### Hand-picked covers for the sample courses
+- **What:** `engram cover <job> <image>` saves a still as `cover.jpg` in the job folder. The home page cards, the hero card and a course's link preview use it, and fall back to the summary video's poster without one. The summary video keeps its own poster.
+- **Why:** the poster is the summary's first shot, with a caption chip on it, and often a plain slide. A person picks a better frame: the lecturer at the board, or a finished, colourful board.
+- **Picking frames:** a contact sheet every 20 to 30 s, then each chosen frame re-taken at full resolution from the sharpest of the frames within ±15 s that matched it (variance of the Laplacian). Sampling at fixed times alone missed: these videos cut between the lecturer, the slides and the screen every few seconds.
+- **No upscaling:** tried Real-ESRGAN on the CPU (PyTorch's oneDNN crashed with SIGFPE on this server until it was turned off). Dropped: the source frames are enough at card size, and an upscaler invents detail in a frame that stands for the lecture.
+- **MIT 18.06's 640×480 frames have black edges** a few pixels wide, so its cover is trimmed before saving.

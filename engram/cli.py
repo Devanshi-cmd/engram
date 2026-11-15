@@ -145,6 +145,42 @@ def list_course(
 
 
 @app.command()
+def cover(
+    job_id: str = typer.Argument(..., help="The course to give a cover."),
+    image: Path = typer.Argument(..., help="A still image, e.g. a frame taken from the lecture."),  # noqa: B008
+    remove: bool = typer.Option(False, "--remove", help="Go back to the summary video's poster."),
+) -> None:
+    """Set the picture that stands for a course on the home page and in link previews.
+
+    Without one, the summary video's poster is used. The image is saved as cover.jpg in the
+    job folder, at most 1280 px wide, and isn't cropped: the site crops it to 16:9.
+    """
+    from engram.config import load_settings
+    from engram.errors import MediaError
+    from engram.media.ffmpeg import _run
+
+    folder = load_settings().data_dir / "jobs" / job_id
+    if not (folder / "course.json").exists():
+        typer.secho(f"✕ No finished course {job_id}", fg="red", err=True)
+        raise typer.Exit(1)
+    target = folder / "cover.jpg"
+    if remove:
+        target.unlink(missing_ok=True)
+        typer.echo(f"{job_id} uses its summary poster again.")
+        return
+    if not image.is_file():
+        typer.secho(f"✕ No image at {image}", fg="red", err=True)
+        raise typer.Exit(1)
+    try:
+        _run(["ffmpeg", "-nostdin", "-y", "-v", "error", "-i", str(image), "-frames:v", "1",
+              "-vf", "scale='min(1280,iw)':-2", "-q:v", "2", str(target)], timeout=60)  # fmt: skip
+    except MediaError as e:
+        typer.secho(f"✕ {e}", fg="red", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"{job_id} now uses {target.name}.")
+
+
+@app.command()
 def run(
     video: Path = typer.Argument(..., help="The lecture video file."),  # noqa: B008
     title: str | None = typer.Option(None, help="Lecture title; also a spelling hint for speech."),

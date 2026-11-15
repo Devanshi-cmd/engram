@@ -45,7 +45,7 @@
       {% for c in samples %}
       <div class="sample"{% if not loop.first %} hidden{% endif %}>
         <a class="sample-thumb" href="/courses/{{ c.id }}#summary">
-          <img src="/courses/{{ c.id }}/files/summary.jpg" alt="" width="1920" height="1080"{% if not loop.first %} loading="lazy"{% endif %}>
+          <img src="/courses/{{ c.id }}/files/{{ c.thumb }}" alt="" width="1920" height="1080"{% if not loop.first %} loading="lazy"{% endif %}>
           <span class="sample-play">{{ icon("play") }}Watch the summary</span>
         </a>
         <p class="sample-title"><span>{{ c.title }}</span>{% if c.credit %}<small>{{ c.credit.source.split(" (")[0] }} · {{ c.minutes }} min</small>{% endif %}</p>
@@ -98,7 +98,7 @@
   <div class="course-grid">
     {% for course in courses %}
     <a class="bento-card course-card" href="/courses/{{ course.id }}">
-      {% if course.thumb %}<img class="course-thumb" src="/courses/{{ course.id }}/files/summary.jpg" alt="" loading="lazy" width="1920" height="1080">{% endif %}
+      {% if course.thumb %}<img class="course-thumb" src="/courses/{{ course.id }}/files/{{ course.thumb }}" alt="" loading="lazy" width="1920" height="1080">{% endif %}
       <span class="course-title">{{ course.title }}</span>
       <span class="course-summary muted">{{ course.summary }}</span>
       {% if course.credit %}<span class="course-source">{{ course.credit.source }} · {{ course.credit.license }}</span>{% endif %}

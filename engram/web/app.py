@@ -104,6 +104,14 @@ class HeadAsGet:
         await self.app({**scope, "method": "GET"}, receive, headers_only)
 
 
+def cover_of(folder: Path) -> str | None:
+    """The image that stands for a course: a hand-picked cover, else the summary's poster."""
+    for name in ("cover.jpg", "summary.jpg"):
+        if (folder / name).exists():
+            return name
+    return None
+
+
 def _asset_version(static: Path) -> str:
     """A short hash of every static file, so `?v=` changes whenever a stylesheet or script does
     and browsers never keep a stale copy (the package version only moves on a release)."""
@@ -176,7 +184,7 @@ def create_app(
                                           "diagrams": sum(len(ch["diagrams"]) for ch in chapters),
                                           "cards": sum(len(ch["flashcards"]) for ch in chapters),
                                           "questions": sum(len(ch["quiz"]) for ch in chapters)},
-                               "thumb": (jobs_root / job.id / "summary.jpg").exists()})  # fmt: skip
+                               "thumb": cover_of(jobs_root / job.id)})  # fmt: skip
         return templates.TemplateResponse(
             request,
             "home.html",

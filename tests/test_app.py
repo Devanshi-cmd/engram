@@ -267,6 +267,33 @@ def test_a_listed_lecture_credits_its_source_and_licence(
     assert "MIT OpenCourseWare · CC BY-NC-SA 4.0" in c.get("/").text
 
 
+def test_a_hand_picked_cover_replaces_the_summary_poster(
+    finished: str, settings: Settings, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import subprocess
+
+    from typer.testing import CliRunner
+
+    from engram.cli import app as cli
+
+    monkeypatch.setenv("ENGRAM_DATA_DIR", str(settings.data_dir))
+    Store(settings.data_dir / "engram.sqlite3").set_listed(finished, True)
+    c = web(settings)
+    assert f"/courses/{finished}/files/summary.jpg" in c.get("/").text
+    still = tmp_path / "still.png"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=1920x1080",
+                    "-frames:v", "1", str(still)], check=True)  # fmt: skip
+    ok = CliRunner().invoke(cli, ["cover", finished, str(still)])
+    assert ok.exit_code == 0, ok.output
+    home = c.get("/").text
+    assert f"/courses/{finished}/files/cover.jpg" in home
+    assert f"/courses/{finished}/files/summary.jpg" not in home
+    assert "files/cover.jpg" in c.get(f"/courses/{finished}").text  # the link preview
+    assert c.get(f"/courses/{finished}/files/cover.jpg").status_code == 200
+    gone = CliRunner().invoke(cli, ["cover", finished, str(still), "--remove"])
+    assert gone.exit_code == 0 and "summary.jpg" in c.get("/").text
+
+
 # --- Text and formats ----------------------------------------------------------------------
 
 
