@@ -383,3 +383,10 @@ Smaller lessons along the way:
 - **YouTube's terms** don't permit downloading without its permission. Decided with the user: any public video, behind the access code, same as an uploaded file. The practical risk is YouTube blocking the server; the error then says to upload the file instead.
 - **Tested offline** with a fake YouTube (`tests/fakes.py`), and once by hand against the real thing: a 7.5-minute MIT video downloaded in 9 s at 720p.
 - **Alternatives:** download in the web request (a 2-hour video would hold the request for minutes); let the browser fetch it (YouTube blocks cross-origin video downloads).
+
+### Subscripts written as plain text
+- **What happened:** in the CS229 course from YouTube, some text read "h_θ(x^(i))" instead of h with a subscript θ. Opus writes maths in $...$ in the notes, but sometimes not in key terms, summaries or card checks. Mermaid labels can't hold LaTeX at all, so diagrams always used `_` and `^`.
+- **Fix on the page:** after KaTeX runs, `course.js` turns `_x`, `^x`, `_{...}` and `^(...)` after a single letter or a closing bracket into real `<sub>`/`<sup>` elements, in the notes and inside every drawn diagram. A letter that ends a word doesn't count, so `snake_case` and `learning_rate` stay as they are. Code, links and typeset maths are skipped. It builds DOM nodes from text, so nothing the model wrote is ever parsed as HTML. Existing courses are fixed with no re-run.
+- **Fix at the source:** the prompt now asks for every symbol in $...$, everywhere, and for `_`/`^` with braces in diagram labels (`PROMPT_VERSION` 2).
+- **Diagram boxes:** Mermaid sizes a box for the text before the scripts are drawn, so labels are centred in their box afterwards.
+- **A slip worth remembering:** the prompts are f-strings, so `{(i)}` in an example broke the import, and the web app restarted into a crash loop for about 5 minutes. Run the tests before restarting a service, every time.

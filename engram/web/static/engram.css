@@ -196,6 +196,9 @@ main.is-wide { max-width: 1480px; }
 .mermaid-source { margin: 0; white-space: pre-wrap; font-size: 13px; color: var(--muted); }
 .diagram.is-drawn .mermaid-source { display: none; }
 .mermaid-view svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+sub.ms, sup.ms { font-size: 0.72em; line-height: 0; }
+/* Labels shrink once their scripts are drawn: keep them centred in the box Mermaid sized. */
+.mermaid-view foreignObject > div { display: flex !important; height: 100%; align-items: center; justify-content: center; }
 .diagram-caption { margin: 10px 0 0; font-size: 14px; }
 .diagram-card { padding: 24px 28px; }
 .diagram-card .diagram { margin-top: 0; }

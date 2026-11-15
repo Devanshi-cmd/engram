@@ -36,6 +36,40 @@
     });
   }
 
+  // Maths written as plain text: Mermaid labels can't hold LaTeX, and a note sometimes slips
+  // out of $...$. "h_θ(x^(i))" is drawn as h with a subscript θ and x with a superscript (i).
+  // A script follows a single letter (or a closing bracket) that doesn't end a word, so
+  // snake_case names and URLs are left alone. Text only: nothing is parsed as HTML.
+  var SCRIPTED = /((?<![\p{L}\p{N}_\\.])\p{L}|[)\]])((?:[_^](?:\{[^{}]{1,24}\}|\([^()\s]{1,8}\)|\p{N}+|\p{L}))+)/gu;
+  var SCRIPT = /([_^])(\{[^{}]{1,24}\}|\([^()\s]{1,8}\)|\p{N}+|\p{L})/gu;
+  var PLAIN = "code, pre, a, .katex, .tex, .mermaid-source, script, style, textarea";
+  function scripts(root) {
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    var found = [];
+    for (var node = walker.nextNode(); node; node = walker.nextNode()) {
+      var parent = node.parentElement;
+      if (!parent || parent.namespaceURI !== "http://www.w3.org/1999/xhtml") continue; // SVG <text>
+      if (parent.closest(PLAIN)) continue;
+      SCRIPTED.lastIndex = 0;
+      if (SCRIPTED.test(node.nodeValue)) found.push(node);
+    }
+    found.forEach(function (text) {
+      var value = text.nodeValue, out = document.createDocumentFragment(), at = 0;
+      value.replace(SCRIPTED, function (whole, base, tail, offset) {
+        out.appendChild(document.createTextNode(value.slice(at, offset) + base));
+        tail.replace(SCRIPT, function (_, op, arg) {
+          var el = document.createElement(op === "_" ? "sub" : "sup");
+          el.className = "ms";
+          el.textContent = arg.charAt(0) === "{" ? arg.slice(1, -1) : arg;
+          out.appendChild(el);
+        });
+        at = offset + whole.length;
+      });
+      out.appendChild(document.createTextNode(value.slice(at)));
+      text.parentNode.replaceChild(out, text);
+    });
+  }
+
   // Mermaid bakes its colours into the SVG, so a diagram is drawn for one theme. When the
   // theme switch flips, every drawn diagram is forgotten and drawn again in the new colours.
   var mermaidTheme = null;
@@ -61,6 +95,7 @@
       diagramCount += 1;
       window.mermaid.render("diagram-" + diagramCount, source.textContent).then(function (out) {
         view.innerHTML = out.svg; // Mermaid's strict mode sanitises its own output
+        scripts(view);
         figure.classList.add("is-drawn");
       }).catch(function () {
         figure.classList.add("is-broken"); // the source stays visible instead
@@ -297,6 +332,7 @@
   // ---- start -----------------------------------------------------------------------
   function ready() {
     typeset(document.body);
+    scripts(document.body);
     drawDiagrams(document);
     new MutationObserver(function () { drawDiagrams(document); })
       .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
