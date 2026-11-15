@@ -104,6 +104,17 @@ class HeadAsGet:
         await self.app({**scope, "method": "GET"}, receive, headers_only)
 
 
+def _asset_version(static: Path) -> str:
+    """A short hash of every static file, so `?v=` changes whenever a stylesheet or script does
+    and browsers never keep a stale copy (the package version only moves on a release)."""
+    digest = hashlib.sha256(__version__.encode())
+    for path in sorted(static.rglob("*")):
+        if path.is_file():
+            digest.update(path.relative_to(static).as_posix().encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:10]
+
+
 def create_app(
     settings: Settings,
     allowed_hosts: Iterable[str] = ("127.0.0.1", "localhost"),
@@ -117,7 +128,7 @@ def create_app(
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
     app.mount("/static", StaticFiles(directory=_PACKAGE / "static"), name="static")
     templates = Jinja2Templates(directory=_PACKAGE / "templates")
-    templates.env.globals["version"] = __version__
+    templates.env.globals["version"] = _asset_version(_PACKAGE / "static")
     templates.env.filters["clock"] = course_view.stamp
     store = Store(settings.data_dir / "engram.sqlite3")
     jobs_root = settings.data_dir / "jobs"

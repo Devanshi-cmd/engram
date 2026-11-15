@@ -36,17 +36,23 @@
     });
   }
 
-  var mermaidReady = false;
+  // Mermaid bakes its colours into the SVG, so a diagram is drawn for one theme. When the
+  // theme switch flips, every drawn diagram is forgotten and drawn again in the new colours.
+  var mermaidTheme = null;
   var diagramCount = 0;
   function drawDiagrams(root) {
     if (!window.mermaid) return;
-    if (!mermaidReady) {
-      var dark = document.documentElement.dataset.theme === "dark";
+    var theme = document.documentElement.dataset.theme === "dark" ? "dark" : "neutral";
+    if (theme !== mermaidTheme) {
       window.mermaid.initialize({
-        startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "neutral",
+        startOnLoad: false, securityLevel: "strict", theme: theme,
         fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif",
       });
-      mermaidReady = true;
+      if (mermaidTheme !== null) {
+        $$(".diagram[data-drawn]").forEach(function (figure) { figure.removeAttribute("data-drawn"); });
+        root = document;
+      }
+      mermaidTheme = theme;
     }
     $$(".diagram", root).forEach(function (figure) {
       var source = $(".mermaid-source", figure), view = $(".mermaid-view", figure);
@@ -292,6 +298,8 @@
   function ready() {
     typeset(document.body);
     drawDiagrams(document);
+    new MutationObserver(function () { drawDiagrams(document); })
+      .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   }
   if (document.readyState === "complete") ready(); else window.addEventListener("load", ready);
 })();

@@ -12,7 +12,8 @@
 .output-tile-cards { background: var(--agent-tester); }
 .output-tile-quiz { background: var(--agent-reviewer); }
 .output-tile-video { background: var(--critical); }
-.output-tile-sync { background: var(--agent-verify); }
+.output-tile-sync { background: var(--ink); }
+.output-tile-sync svg { stroke: var(--surface); }
 
 .icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .home-form button .icon { width: 16px; height: 16px; margin-left: 8px; stroke-width: 2.2; }
@@ -251,8 +252,6 @@ main.is-wide { max-width: 1480px; }
    The walkthrough is DevSwarm's (.hiw-* in theme.css), laid out for seven steps. Engram only
    places its own steps and colours them. The locked band reads "every step saved", and the
    loop is Opus going back to a frame. */
-.agent-tile { display: grid; flex: none; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--agent-verify); }
-.agent-tile svg { width: 22px; height: 22px; fill: none; stroke: #ffffff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .hiw-step-video { grid-column: 1; }
 .hiw-step-listen { grid-column: 2; }
 .hiw-step-watch { grid-column: 3; }

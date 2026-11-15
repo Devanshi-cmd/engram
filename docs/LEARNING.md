@@ -354,3 +354,10 @@ Smaller lessons along the way:
 ### After launch: HEAD requests and deleting jobs
 - **HEAD:** FastAPI routes answer only the methods they declare, so every page returned 405 to HEAD, which uptime monitors and link checkers send. A small outer middleware serves HEAD as GET and drops the body, keeping the headers (including Content-Length). Starlette's own routes do this by default; FastAPI's don't.
 - **`engram delete`:** a command rather than hand-written SQL, because a job lives in three places: its folder, its R2 objects and its database rows. The R2 keys come from the job's own `playback.json` and `summary.json`, and an upload another job also uses is never deleted.
+
+### A visual audit after launch: grey icons, light diagrams in dark mode, stale CSS
+- **Grey icons:** the How it works? page needed `.agent-tile`, so its rule was copied into `engram.css`. It sat below the per-output colour rules with the same specificity, so its grey background won everywhere. The copy is gone (theme.css already has the rule), and "Every moment linked" now uses `--ink` instead of the neutral grey, like the Lecture and Course tiles on How it works?.
+- **Diagrams in dark mode:** Mermaid writes its colours into the SVG, and the page set its theme once, on first draw. Diagrams drawn before the theme switch was flipped stayed light. Now a theme change re-initialises Mermaid and redraws every diagram (hidden tabs redraw when opened).
+- **Stale CSS:** assets were cache-busted with `?v=<package version>`, which doesn't move when a stylesheet changes, and nginx sends no Cache-Control, so browsers could keep an old copy. `?v=` is now a hash of every file in `static/`, taken when the app starts.
+- **How it was found:** a Playwright script opened every page on desktop and phone, in both themes, checked tile colours, broken images, horizontal overflow and console errors, then took screenshots that were looked through by hand.
+- **Lesson:** a copied rule that changes the cascade order can quietly override rules above it. Keep shared components in one stylesheet.
