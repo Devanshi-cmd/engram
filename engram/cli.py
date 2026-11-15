@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -188,6 +189,77 @@ def jobs() -> None:
     for job in store.jobs():
         listed = "listed" if job.listed else ""
         typer.echo(f"{job.id}  {job.status:<7}  {listed:<6}  {job.title}")
+
+
+@app.command()
+def delete(
+    job_ids: Annotated[list[str], typer.Argument(help="The jobs to delete.")],
+    yes: bool = typer.Option(False, "--yes", help="Don't ask first."),
+) -> None:
+    """Delete jobs: their folders, their files in R2 and their records. Not undoable.
+
+    A course on the home page has to be hidden first (`engram list <job> --hide`), and a job
+    that's running can't be deleted. Cached transcripts and readings are kept, so the same
+    lecture uploaded again costs nothing.
+    """
+    import shutil
+
+    from engram.config import load_settings
+    from engram.pipeline import Store
+    from engram.pipeline.runner import job_lock
+    from engram.storage import storage_from
+
+    settings = load_settings()
+    store = Store(settings.data_dir / "engram.sqlite3")
+    storage = storage_from(settings)
+    jobs_root = settings.data_dir / "jobs"
+    plans: list[tuple[str, str, list[str]]] = []
+    for job_id in job_ids:
+        try:
+            job = store.job(job_id)
+        except KeyError:
+            typer.secho(f"✕ No job {job_id}", fg="red", err=True)
+            raise typer.Exit(1) from None
+        if job.listed:
+            typer.secho(f"✕ {job_id} is on the home page. Hide it first.", fg="red", err=True)
+            raise typer.Exit(1)
+        with job_lock(jobs_root / job_id) as free:
+            if not free or job.status == "running":
+                typer.secho(f"✕ {job_id} is running.", fg="red", err=True)
+                raise typer.Exit(1)
+        keys = _stored_keys(jobs_root / job_id)  # may include the upload: it can play as is
+        if job.source_key:
+            keys.append(job.source_key)
+        shared = any(j.source_key == job.source_key for j in store.jobs() if j.id != job_id)
+        keys = [k for k in dict.fromkeys(keys) if not (shared and k == job.source_key)]
+        plans.append((job_id, job.title, keys))
+        where = f", {len(keys)} file{'s' if len(keys) != 1 else ''} in R2" if keys else ""
+        typer.echo(f"{job_id}  {job.title}{where}")
+    if not yes and not typer.confirm(f"Delete {len(plans)} job(s)?"):
+        raise typer.Exit(1)
+    for job_id, _, keys in plans:
+        if keys and storage is None:
+            typer.secho(f"✕ {job_id} has files in R2, but R2 isn't set up.", fg="red", err=True)
+            raise typer.Exit(1)
+        for key in keys:
+            assert storage is not None
+            storage.delete(key)
+        shutil.rmtree(jobs_root / job_id, ignore_errors=True)
+        store.delete_job(job_id)
+        typer.echo(f"Deleted {job_id}.")
+
+
+def _stored_keys(folder: Path) -> list[str]:
+    """The R2 keys a job's playback and summary videos were uploaded to."""
+    keys = []
+    for name in ("playback.json", "summary.json"):
+        path = folder / name
+        if not path.exists():
+            continue
+        data = json.loads(path.read_text())
+        entries = data.get("videos", {}).values() if name == "summary.json" else [data]
+        keys += [e["key"] for e in entries if e.get("key")]
+    return keys
 
 
 @app.command()

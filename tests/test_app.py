@@ -362,3 +362,44 @@ def test_links_pasted_elsewhere_preview_with_an_image(finished: str, settings: S
     course = c.get(f"/courses/{finished}").text
     assert f'content="http://testserver/courses/{finished}/files/summary.jpg"' in course
     assert '<meta property="og:title" content="' in course and "· Engram" in course
+
+
+def test_every_page_answers_head_without_a_body(finished: str, settings: Settings) -> None:
+    c = web(settings)
+    for path in ("/", "/how-it-works", f"/courses/{finished}", "/healthz"):
+        r = c.head(path)
+        assert r.status_code == 200 and r.content == b"", path
+        assert int(r.headers["content-length"]) > 0  # what a GET would send
+    assert c.head("/no-such-page").status_code == 404
+    assert c.head("/uploads").status_code == 405  # POST-only stays POST-only
+
+
+def test_deleting_jobs_cleans_up_r2_and_refuses_listed_ones(
+    runner: Runner, settings: Settings, lecture_video: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typer.testing import CliRunner
+
+    from engram.cli import app as cli
+    from tests.test_storage import FakeBucket
+
+    bucket = FakeBucket()
+    runner.services.storage = bucket
+    monkeypatch.setattr("engram.storage.storage_from", lambda _s: bucket)
+    monkeypatch.setenv("ENGRAM_DATA_DIR", str(settings.data_dir))
+    bucket.objects["uploads/a.mp4"] = lecture_video.read_bytes()
+    job = runner.store.create_job("Talk", runner.job_dir("x") / "a.mp4", "r2:e:1",
+                                  source_key="uploads/a.mp4")  # fmt: skip
+    assert runner.run(job.id)
+    assert len(bucket.objects) == 3  # the upload (played as is) and two summary videos
+    other, _ = start_job(runner, lecture_video)
+
+    runner.store.set_listed(job.id, True)
+    assert CliRunner().invoke(cli, ["delete", job.id, "--yes"]).exit_code == 1
+    assert runner.store.job(job.id)  # a listed course is kept
+    runner.store.set_listed(job.id, False)
+    done = CliRunner().invoke(cli, ["delete", job.id, "--yes"])
+    assert done.exit_code == 0, done.output
+    assert bucket.objects == {} and not runner.job_dir(job.id).exists()
+    with pytest.raises(KeyError):
+        runner.store.job(job.id)
+    assert runner.store.job(other.id)  # nothing else touched

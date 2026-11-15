@@ -71,6 +71,7 @@ How uploads work: the page sends the access code, the file's name and its size f
 - Needs `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` and `ANTHROPIC_API_KEY` in `.env`, ffmpeg, and Node with `tools/mermaid` installed.
 - `PrivateTmp=true`: the worker can't see `/tmp`. Uploads live in `.data/uploads/`, so that's fine, but a job made with `engram run /tmp/…` from a shell can only be processed by that shell.
 - Logs: `journalctl -u engram-worker -f`. List jobs with `engram jobs`; show a course on the home page with `engram list <job>` (and `--hide`).
+- Delete jobs with `engram delete <job>…`: their folders, their files in R2 (an upload shared with another job is kept) and their records. Listed or running jobs are refused. Cached transcripts and readings stay, so the same lecture uploaded again is free. Upload records stay too: they count toward their code's daily limit.
 
 ## Limits
 

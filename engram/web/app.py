@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from engram import __version__
 from engram.config import Settings
@@ -77,6 +78,30 @@ MAX_UPLOAD_BYTES = 2 * 1024**3
 DAY = 24 * 3600.0
 MAX_QUEUED = 5  # more waiting than this and a new upload is turned away, not left for hours
 MIN_FREE_BYTES = 4 * 1024**3  # an upload, its web copy and its frames need room
+
+
+class HeadAsGet:
+    """Answers HEAD like GET, without the body. FastAPI routes only answer the methods they
+    declare, so uptime monitors and link checkers that send HEAD got 405 for every page."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["method"] != "HEAD":
+            await self.app(scope, receive, send)
+            return
+        finished = False
+
+        async def headers_only(message: Message) -> None:
+            nonlocal finished
+            if message["type"] != "http.response.body":
+                await send(message)
+            elif not finished:
+                finished = True
+                await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+        await self.app({**scope, "method": "GET"}, receive, headers_only)
 
 
 def create_app(
@@ -407,4 +432,5 @@ def create_app(
     def healthz() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
 
+    app.add_middleware(HeadAsGet)  # outermost: every page answers HEAD
     return app

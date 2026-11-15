@@ -216,6 +216,14 @@ class Store:
             rows = db.execute("SELECT * FROM jobs ORDER BY created_at DESC").fetchall()
         return [_job(r) for r in rows]
 
+    def delete_job(self, job_id: str) -> None:
+        """Forgets a job: its stages and events too. Upload records stay, as they count
+        toward their access code's daily limit."""
+        with self._connect() as db:
+            db.execute("DELETE FROM events WHERE job_id = ?", (job_id,))
+            db.execute("DELETE FROM stages WHERE job_id = ?", (job_id,))
+            db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+
     def next_queued(self) -> Job | None:
         """The oldest job waiting for the worker."""
         with self._connect() as db:

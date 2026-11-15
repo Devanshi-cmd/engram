@@ -350,3 +350,7 @@ Smaller lessons along the way:
 
 ### README GIFs
 - Recorded with Playwright's video capture on the live site, converted with ffmpeg (12 fps, 960 px, a palette per GIF). Both use openly licensed lectures (Khan Academy), never CS229.
+
+### After launch: HEAD requests and deleting jobs
+- **HEAD:** FastAPI routes answer only the methods they declare, so every page returned 405 to HEAD, which uptime monitors and link checkers send. A small outer middleware serves HEAD as GET and drops the body, keeping the headers (including Content-Length). Starlette's own routes do this by default; FastAPI's don't.
+- **`engram delete`:** a command rather than hand-written SQL, because a job lives in three places: its folder, its R2 objects and its database rows. The R2 keys come from the job's own `playback.json` and `summary.json`, and an upload another job also uses is never deleted.
