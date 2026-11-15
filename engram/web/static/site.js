@@ -72,6 +72,8 @@
     var form = document.querySelector("form[data-upload]");
     if (!form) return;
     var input = form.querySelector("input[type=file]");
+    var link = form.querySelector("input[name=url]");
+    var zone = form.querySelector(".dropzone");
     var hint = form.querySelector(".dropzone-hint");
     var error = form.querySelector("[data-upload-error]");
     var button = form.querySelector("button[type=submit]");
@@ -83,6 +85,25 @@
       button.disabled = false;
       button.innerHTML = label;
       input.disabled = false;
+      if (link) link.disabled = false;
+    }
+
+    // A file or a link, never both: choosing one clears the other.
+    if (link) {
+      link.addEventListener("input", function () {
+        var used = link.value.trim() !== "";
+        zone.classList.toggle("is-off", used);
+        if (used && input.value) {
+          input.value = "";
+          input.dispatchEvent(new Event("change"));
+        }
+      });
+      input.addEventListener("change", function () {
+        if (input.files && input.files[0]) {
+          link.value = "";
+          zone.classList.remove("is-off");
+        }
+      });
     }
     function post(url, body) {
       return fetch(url, {
@@ -115,8 +136,21 @@
     form.addEventListener("submit", function (event) {
       event.preventDefault();
       var file = input.files && input.files[0];
-      if (!file) return fail("Choose a lecture video first.");
+      var url = link ? link.value.trim() : "";
+      if (!file && !url) return fail("Choose a lecture video, or paste a YouTube link.");
       error.hidden = true;
+      if (!file) {
+        button.disabled = true;
+        button.textContent = "Checking the link…";
+        link.disabled = true;
+        var fields = new FormData(form);
+        post("/links", {
+          access_code: fields.get("access_code") || "", title: fields.get("title") || "", url: url,
+        }).then(function (done) {
+          window.location.assign(done.job);
+        }).catch(function (e) { fail(e.message); });
+        return;
+      }
       button.disabled = true;
       button.textContent = "Checking the code…";
       var data = new FormData(form);

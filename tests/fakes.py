@@ -152,3 +152,40 @@ class FakeJudge:
             reason = "not in the lecture" if bad else "said at the anchor"
             verdicts.append({"id": item_id, "verdict": verdict, "reason": reason})
         return schema.model_validate({"verdicts": verdicts}), 0.0002
+
+
+class FakeYouTube:
+    """YouTube without the network: known ids have details, and 'downloading' copies a file."""
+
+    def __init__(self, video: Path) -> None:
+        from engram.media.youtube import VideoInfo
+
+        self.video = video
+        self.videos: dict[str, VideoInfo] = {}
+        self.downloads: list[str] = []
+        self.fail_download: str | None = None  # a YouTubeError message to raise instead
+        self.add("dQw4w9WgXcQ", "Linear Algebra, Lecture 1", 2400)
+
+    def add(self, vid: str, title: str, duration: float) -> None:
+        from engram.media.youtube import VideoInfo, watch_url
+
+        self.videos[vid] = VideoInfo(id=vid, title=title, channel="Open Lectures",
+                                     duration=duration, url=watch_url(vid))  # fmt: skip
+
+    def info(self, video_id: str) -> Any:
+        from engram.media.youtube import YouTubeError
+
+        if video_id not in self.videos:
+            raise YouTubeError("This video is private. Use a public or unlisted video.")
+        return self.videos[video_id]
+
+    def download(self, video_id: str, out: Path) -> None:
+        import shutil
+
+        from engram.media.youtube import YouTubeError
+
+        self.downloads.append(video_id)
+        if self.fail_download:
+            raise YouTubeError(self.fail_download)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(self.video, out)

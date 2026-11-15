@@ -13,7 +13,7 @@
   ("course", "Course", "ready to study", '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/>'),
 ] %}
 {% set steps = [
-  ({"at": 0}, "You upload a lecture", "Any lecture video up to two hours. Your access code is checked before a single byte is sent, then the video goes straight to storage."),
+  ({"at": 0}, "You upload a lecture", "A video file or a YouTube link, up to two hours. Your access code is checked before a single byte is sent, then the video goes straight to storage."),
   ({"at": 1, "locked": "on"}, "It listens", "ElevenLabs Scribe turns the talk into words, each with its exact time, and tells the lecturer apart from students asking questions."),
   ({"at": 2, "locked": "on"}, "It watches the board", "Frames are compared every two seconds, and one is kept each time the board changes, from the view where the lecturer blocks the least. A 78-minute lecture becomes about 120 frames."),
   ({"at": 3, "locked": "on"}, "A fast model reads every frame", "Claude Haiku reads each board and slide, with the words spoken at that moment as a hint. Handwritten maths comes back as LaTeX, for about 15 cents an hour of lecture."),

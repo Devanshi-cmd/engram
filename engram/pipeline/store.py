@@ -243,6 +243,10 @@ class Store:
                            [(i,) for i in stale])  # fmt: skip
         return stale
 
+    def set_source_key(self, job_id: str, key: str) -> None:
+        with self._connect() as db:
+            db.execute("UPDATE jobs SET source_key = ? WHERE id = ?", (key, job_id))
+
     def set_listed(self, job_id: str, listed: bool) -> None:
         with self._connect() as db:
             db.execute("UPDATE jobs SET listed = ? WHERE id = ?", (int(listed), job_id))

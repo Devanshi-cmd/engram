@@ -65,6 +65,11 @@ Optional: an R2 lifecycle rule that deletes `uploads/` objects older than a day 
 
 How uploads work: the page sends the access code, the file's name and its size first. Only if the code is right does the server create a one-time upload slot (an hour) and answer with a signed PUT URL for exactly that key, size and type. The browser sends the file straight to R2, and the server never holds it. Then the page reports "done"; the server checks that the object arrived complete and queues the job. Ten wrong codes from one address in 10 minutes block it for the rest of that window.
 
+YouTube links: the page sends the access code and the link. The server checks the code and its daily allowance, then reads the video's details with yt-dlp (title, length, public or not) and refuses private, members-only, age-restricted and live videos, and anything over the length limit, before a job exists. The worker downloads the video when the job runs (up to 720p, H.264 and AAC, so it plays as it is), puts it in R2 like an upload, and deletes the local copy afterwards. The same video sent again reuses its job.
+
+- **Keep yt-dlp current.** YouTube changes often and old versions stop working: `uv lock --upgrade-package yt-dlp && uv sync`, then restart both services. yt-dlp uses Node (already installed for Mermaid) to solve YouTube's player challenges.
+- **If YouTube blocks the server** ("confirm you're not a bot"), links fail with a message that says to upload the file instead. Uploads keep working.
+
 ## The worker
 
 - Runs as `devdi`, so headless Claude Code uses that account's login (the Claude plan). Check with `sudo -u devdi claude -p "hi"` if Opus stages fail with a login error.

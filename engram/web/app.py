@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import math
 import re
 import shutil
@@ -28,6 +29,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -36,6 +38,7 @@ from engram import __version__
 from engram.config import Settings
 from engram.errors import EngramError
 from engram.media import probe
+from engram.media.youtube import YouTube, YouTubeError, YtDlp, video_id, watch_url
 from engram.pipeline import Store, start_job
 from engram.pipeline.stages import STAGES
 from engram.pipeline.store import Job
@@ -129,6 +132,7 @@ def create_app(
     *,
     accept_uploads: bool = False,
     storage: Storage | None = None,
+    youtube: YouTube | None = None,
 ) -> FastAPI:
     """`accept_uploads` is on when a worker runs alongside (`engram serve --uploads`)."""
     app = FastAPI(title="Engram", docs_url=None, redoc_url=None, openapi_url=None)
@@ -142,6 +146,7 @@ def create_app(
     jobs_root = settings.data_dir / "jobs"
     uploads = accept_uploads and settings.uploads_enabled
     storage = storage or storage_from(settings)
+    youtube_client = youtube or YtDlp()
     wrong_codes: dict[str, list[float]] = {}
     headers = dict(SECURITY_HEADERS)
     if storage is not None:  # pages play from, and upload to, the R2 bucket's own address
@@ -207,22 +212,15 @@ def create_app(
     def client_ip(request: Request) -> str:
         return request.headers.get("x-real-ip") or (request.client.host if request.client else "")
 
-    @app.post("/uploads")
-    async def start_upload(request: Request) -> Response:
-        if not uploads:
-            raise StarletteHTTPException(404)
+    def admit(request: Request, code: str) -> str | Response:
+        """Checks an access code, its daily allowance and the queue. Returns the code's id
+        (a hash, never the code), or the refusal to send back."""
         ip = client_ip(request)
         now = time.time()
         recent = [t for t in wrong_codes.get(ip, []) if now - t < WRONG_CODE_WINDOW]
         wrong_codes[ip] = recent
         if len(recent) >= WRONG_CODE_LIMIT:
             return refused("Too many wrong access codes. Try again in 10 minutes.", 429)
-        try:
-            body = await request.json()
-            code, filename = str(body.get("access_code", "")), str(body.get("filename", ""))
-            size, title = int(body.get("size", 0)), str(body.get("title", ""))
-        except (ValueError, TypeError, AttributeError):
-            return refused("The upload request was malformed.", 400)
         if not any(hmac.compare_digest(code.encode(), c.encode()) for c in settings.access_codes):
             recent.append(now)
             return refused("That access code isn't valid.", 403)
@@ -233,13 +231,34 @@ def create_app(
             return refused(
                 f"This access code has used its {settings.daily_uploads} lectures for the day. "
                 f"Try again in {hours} hour{'s' if hours != 1 else ''}.", 429)  # fmt: skip
+        if sum(1 for j in store.jobs() if j.status == "queued") >= MAX_QUEUED:
+            return refused("Engram is busy with other lectures. Try again in an hour.", 503)
+        return code_id
+
+    def requeue_if_stuck(job: Job) -> None:
+        """A lecture sent again: retry it if it failed, or catch up on newer stages."""
+        unfinished = not (jobs_root / job.id / "course.json").exists()
+        if job.status == "failed" or (job.status == "done" and unfinished):
+            store.set_job_status(job.id, "queued")
+
+    @app.post("/uploads")
+    async def start_upload(request: Request) -> Response:
+        if not uploads:
+            raise StarletteHTTPException(404)
+        try:
+            body = await request.json()
+            code, filename = str(body.get("access_code", "")), str(body.get("filename", ""))
+            size, title = int(body.get("size", 0)), str(body.get("title", ""))
+        except (ValueError, TypeError, AttributeError):
+            return refused("The upload request was malformed.", 400)
+        code_id = admit(request, code)
+        if isinstance(code_id, Response):
+            return code_id
         suffix = Path(filename).suffix.lower()
         if suffix not in VIDEO_TYPES:
             return refused("Upload a video file: MP4, MOV, MKV or WebM.", 400)
         if not 0 < size <= MAX_UPLOAD_BYTES:
             return refused("That file is over 2 GB.", 413)
-        if sum(1 for j in store.jobs() if j.status == "queued") >= MAX_QUEUED:
-            return refused("Engram is busy with other lectures. Try again in an hour.", 503)
         if storage is None and shutil.disk_usage(settings.data_dir).free < MIN_FREE_BYTES + size:
             return refused("The server is short of disk space, so uploads are paused.", 507)
         content_type = VIDEO_TYPES[suffix]
@@ -310,9 +329,54 @@ def create_app(
             else:
                 existing = None
         if existing is not None:
-            unfinished = not (jobs_root / job.id / "course.json").exists()
-            if job.status == "failed" or (job.status == "done" and unfinished):
-                store.set_job_status(job.id, "queued")  # retry, or catch up on newer stages
+            requeue_if_stuck(job)
+        store.finish_upload(slot.id, job.id)
+        return JSONResponse({"job": f"/jobs/{job.id}"})
+
+    # ---- YouTube links: the details are read now, the video is downloaded by the worker.
+    @app.post("/links")
+    async def start_from_link(request: Request) -> Response:
+        if not uploads:
+            raise StarletteHTTPException(404)
+        try:
+            body = await request.json()
+            code, link = str(body.get("access_code", "")), str(body.get("url", ""))
+            title = str(body.get("title", ""))
+        except (ValueError, TypeError, AttributeError):
+            return refused("The request was malformed.", 400)
+        code_id = admit(request, code)
+        if isinstance(code_id, Response):
+            return code_id
+        vid = video_id(link)
+        if vid is None:
+            return refused("Paste a link to a YouTube video, like "
+                           "https://www.youtube.com/watch?v=…", 400)  # fmt: skip
+        job = store.find_by_source(f"youtube:{vid}")
+        if job is not None:
+            requeue_if_stuck(job)
+        else:
+            if storage is None and shutil.disk_usage(settings.data_dir).free < MIN_FREE_BYTES * 2:
+                return refused("The server is short of disk space, so new lectures are paused.",
+                               507)  # fmt: skip
+            try:
+                info = await run_in_threadpool(youtube_client.info, vid)
+            except YouTubeError as e:
+                return refused(str(e), 400)
+            except Exception:  # noqa: BLE001  # yt-dlp can fail in many ways
+                return refused("YouTube couldn't be reached. Try again in a minute.", 502)
+            if info.duration > settings.max_minutes * 60:
+                return refused(f"This lecture is {info.duration / 60:.0f} minutes long. "
+                               f"The limit is {settings.max_minutes} minutes.", 400)  # fmt: skip
+            local = settings.data_dir / ("work" if storage else "uploads") / f"youtube-{vid}.mp4"
+            name = title.strip()[:120] or info.title[:120]
+            job = store.create_job(name, local, info.source_sha)
+            folder = jobs_root / job.id
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "source.json").write_text(json.dumps(
+                {"url": info.url, "title": info.title, "channel": info.channel},
+                indent=1, ensure_ascii=False))  # fmt: skip
+        slot = store.create_upload("youtube/{id}", watch_url(vid), job.title, 0, "video/mp4",
+                                   code_id)  # fmt: skip
         store.finish_upload(slot.id, job.id)
         return JSONResponse({"job": f"/jobs/{job.id}"})
 

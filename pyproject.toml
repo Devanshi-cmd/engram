@@ -19,6 +19,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "typer>=0.15",
     "uvicorn>=0.32",
+    "yt-dlp[default]>=2026.10.26",
 ]
 
 [project.scripts]
@@ -60,5 +61,5 @@ strict = true
 python_version = "3.12"
 
 [[tool.mypy.overrides]]
-module = ["boto3", "boto3.*", "botocore", "botocore.*"]
+module = ["boto3", "boto3.*", "botocore", "botocore.*", "yt_dlp", "yt_dlp.*"]
 ignore_missing_imports = true

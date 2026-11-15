@@ -374,3 +374,12 @@ Smaller lessons along the way:
 - **Picking frames:** a contact sheet every 20 to 30 s, then each chosen frame re-taken at full resolution from the sharpest of the frames within ±15 s that matched it (variance of the Laplacian). Sampling at fixed times alone missed: these videos cut between the lecturer, the slides and the screen every few seconds.
 - **No upscaling:** tried Real-ESRGAN on the CPU (PyTorch's oneDNN crashed with SIGFPE on this server until it was turned off). Dropped: the source frames are enough at card size, and an upscaler invents detail in a frame that stands for the lecture.
 - **MIT 18.06's 640×480 frames have black edges** a few pixels wide, so its cover is trimmed before saving.
+
+### YouTube links
+- **What:** the upload form also takes a YouTube link. The web app checks the access code (same rules as an upload, now one shared `admit()`), parses the link (watch, youtu.be, shorts, live and embed forms), and reads the video's details with yt-dlp. Private, members-only, age-restricted and live videos, and anything over the length limit, are refused before a job exists. The worker downloads the video when the job runs, then treats it exactly like an upload: kept in R2, fetched to disk while it's worked on, deleted locally afterwards.
+- **The job's identity** is `youtube:<id>` in place of the file's SHA-256, so the same video pasted twice (any link form) reuses its job, and a failed one is retried.
+- **720p, H.264 and AAC:** yt-dlp's format sort prefers them, so the download plays in every browser without a web copy. Board text reads well at 720p, and a 2-hour lecture is about 1.3 GB instead of 2.5 GB at 1080p.
+- **The course credits the video:** `source.json` (link, title, channel) gives a "Made from … on YouTube" line on the course page.
+- **YouTube's terms** don't permit downloading without its permission. Decided with the user: any public video, behind the access code, same as an uploaded file. The practical risk is YouTube blocking the server; the error then says to upload the file instead.
+- **Tested offline** with a fake YouTube (`tests/fakes.py`), and once by hand against the real thing: a 7.5-minute MIT video downloaded in 9 s at 720p.
+- **Alternatives:** download in the web request (a 2-hour video would hold the request for minutes); let the browser fetch it (YouTube blocks cross-origin video downloads).

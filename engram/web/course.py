@@ -126,6 +126,7 @@ def view(files: CourseFiles, job_id: str) -> dict[str, Any]:
         "lecture_title": c["lecture_title"],
         "overview": c["overview"],
         "credit": files.read("credit.json"),  # the original lecture's source and licence
+        "source": files.read("source.json"),  # the YouTube video it was made from, if any
         "duration": clock(c["duration"]),
         "chapters": chapters,
         "diagrams": diagrams,

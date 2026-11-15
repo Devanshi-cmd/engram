@@ -12,10 +12,15 @@
     <form class="home-form" method="post" action="/jobs" enctype="multipart/form-data" data-upload>
       <p class="form-error" role="alert" data-upload-error hidden></p>
       <label class="dropzone">
-        <input class="dropzone-input" type="file" name="video" accept="video/*" required>
+        <input class="dropzone-input" type="file" name="video" accept="video/*">
         <span class="dropzone-icon">{{ icon("upload") }}</span>
         <span class="dropzone-title">Choose a lecture video</span>
         <span class="dropzone-hint">or drop it here · MP4, MOV, MKV or WebM, up to 2 hours</span>
+      </label>
+      <label class="field input-icon">
+        <span class="sr-only">YouTube link</span>
+        {{ icon("link") }}
+        <input type="text" name="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="…or paste a YouTube link">
       </label>
       <label class="field">
         <span class="sr-only">Title</span>

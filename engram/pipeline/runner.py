@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from engram.llm.frames import FrameReader
     from engram.llm.judge import Judge
     from engram.llm.reasoner import Reasoner
+    from engram.media.youtube import YouTube
     from engram.storage import Storage
     from engram.voice.models import Narrator
 
@@ -61,6 +62,13 @@ class Services:
     narrator: Narrator | None = None
     # Cloudflare R2 for big files; None keeps everything on disk.
     storage: Storage | None = None
+    # None means yt-dlp, for jobs made from a YouTube link.
+    youtube: YouTube | None = None
+
+    def get_youtube(self) -> YouTube:
+        from engram.media.youtube import YtDlp
+
+        return self.youtube or YtDlp()
 
     def get_reasoner(self) -> Reasoner:
         from engram.llm.reasoner import OpusReasoner
@@ -204,6 +212,22 @@ class Runner:
     def _fetch_and_run(self, job_id: str, sink: EventSink | None) -> bool:
         job = self.store.job(job_id)
         storage = self.services.storage
+        if job.source_sha.startswith("youtube:") and not job.source_key:
+            if not job.source_path.exists() and not self._download(job):
+                return False
+            if storage is not None:  # from now on it's like an upload: kept in R2, fetched here
+                key = f"uploads/youtube-{job.source_sha.split(':', 1)[1]}.mp4"
+                try:
+                    storage.put_file(job.source_path, key, "video/mp4")
+                except Exception as e:  # noqa: BLE001
+                    self._log(self.job_dir(job_id), "store", e)
+                    message = (
+                        "The lecture couldn't be saved to storage. Try again in a few minutes."
+                    )
+                    self.store.set_job_status(job_id, "failed", message)
+                    return False
+                self.store.set_source_key(job_id, key)
+                job = self.store.job(job_id)
         remote = job.source_key is not None and storage is not None
         if remote and not job.source_path.exists():
             self.job_dir(job_id).mkdir(parents=True, exist_ok=True)
@@ -221,6 +245,24 @@ class Runner:
         finally:
             if remote:
                 job.source_path.unlink(missing_ok=True)
+
+    def _download(self, job: Job) -> bool:
+        """A job made from a YouTube link fetches its video before the first stage."""
+        from engram.media.youtube import DOWNLOAD_FAILED, YouTubeError
+
+        self.job_dir(job.id).mkdir(parents=True, exist_ok=True)
+        self.store.set_job_status(job.id, "running")
+        self.store.add_event(job.id, None, "Downloading the lecture from YouTube")
+        try:
+            self.services.get_youtube().download(job.source_sha.split(":", 1)[1], job.source_path)
+        except Exception as e:  # noqa: BLE001  # a readable failure, not a crashed worker
+            self._log(self.job_dir(job.id), "download", e)
+            message = str(e) if isinstance(e, YouTubeError) else DOWNLOAD_FAILED
+            self.store.set_job_status(job.id, "failed", message)
+            return False
+        size = job.source_path.stat().st_size / 1e6
+        self.store.add_event(job.id, None, f"Downloaded from YouTube ({size:.0f} MB)")
+        return True
 
     def _run(self, job_id: str, sink: EventSink | None = None) -> bool:
         job = self.store.job(job_id)
